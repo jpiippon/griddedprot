@@ -1,0 +1,105 @@
+---
+title: "Supplementary"
+author: "Johannes Piipponen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Raster showing abobeground fraction of the NPP
+Based on Sun et al. https://link.springer.com/article/10.1007/s11427-020-1837-9
+
+
+
+```{r}
+#--------------------------- 5arcmin data created in E:input_data_processing.Rmd
+data_all_but_animals_5arcmin <-
+  here("Data", "Input", "art2_in_E",
+       "data_all_but_animals_masked_where_pasture_every_year_2001_2020_5arcmin.tif") %>% 
+  rast()
+
+MAP <- data_all_but_animals_5arcmin$MAP
+MAT <- data_all_but_animals_5arcmin$MAT
+
+f_ANPP_fraction <-  (1 - (0.000000114*MAP^2 - 0.000307*MAP - 0.00665*MAT + 0.786))
+  ## delete some negative values (somewhere in East Asia where it rains a lot)
+ANPP_fraction <- f_ANPP_fraction
+ANPP_fraction[ANPP_fraction < 0] <- NA ### !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! NOT NA ---> use 0 instead
+plot(ANPP_fraction)
+
+#writeRaster(ANPP_fraction, here("Data", "Supplementary", "fraction_of_NPP_aboveground.tif"))
+global(ANPP_fraction, fun = "mean", na.rm = T) # 0.39
+
+ ## average ANPP_fraction for Australia
+ANPP_fraction %>% 
+  crop_and_mask(adm10_simple_faoadded %>% filter(ADMIN == "Australia")) %>% 
+  global(., fun = "mean", na.rm = T) # 0.47
+
+
+# ------------------------------------------------------------ plot
+pal_ANPP_fraction<-  scico(n = 7, palette = "hawaii", begin = 0.1, end = 0.8)
+
+
+(plt_ANPP_fraction <- 
+    create_index_map(r_index = ANPP_fraction,
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Fraction of NPP allocated aboveground",
+                     index_label = "",
+                     colorpal = pal_ANPP_fraction,
+                     breakvals = c(0, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, Inf),
+                     breaknames = c("<0.1", "0.1-0.2","0.2-0.3",
+                                    "0.3-0.4","0.4-0.5", "0.5-0.6", ">0.6"))) 
+```
+
+
+# Share of croplands and pasturelands in cell
+
+
+```{r}
+  ## detect areas where fraction_total > 100
+fraction_total_over1 <- fraction_total
+fraction_total_over1[fraction_total_over1 < 1] <- NA 
+
+r_fractions_crops_and_grazing_lands <- c(
+  r_grazingland_fraction,
+  r_fraction_of_crops_in_cell,
+  fraction_total,
+  fraction_total_over1
+)
+
+
+
+
+  ## for supplementary fig, convert zeros to NA  ----> why?
+#r_fractions_crops_and_grazing_lands[r_fractions_crops_and_grazing_lands == 0] <- NA
+
+  ## combine fractions of crops in 5arcmin cells with fractions of pastures
+
+
+names(r_fractions_crops_and_grazing_lands) <- c(
+  "Share of HYDE grazing lands in cell",
+  "Share of cropland in cell", 
+  "Share of grazing land and cropland combined", 
+  "Areas where combined share > 100%")
+
+
+pal_shares <-  scico(n = 3, palette = "hawaii", begin = 0.1, end = 0.8)
+
+(plt_shares_of_croplands_and_pasturelands <- 
+    create_index_map(r_index = r_fractions_crops_and_grazing_lands*100,
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Shares of croplands and grazing lands in 5 arc-minutes cells",
+                     index_label = "",
+                     colorpal = pal_shares,
+                     breakvals =  c(0,10,20,40,60,80, 100, Inf),
+                     breaknames = c("0-10", "10-20","20-40","40-60","60-80", "80-100", ">100")) )
+
+
+
+
+
+# tmap_save(plt_shares_of_croplands_and_pasturelands, 
+#           here("Figures", "Supplementary",
+#                "Shares of croplands and pasturelands in 5 arc-minutes cells.png"),
+#           width = 180, height = 150, units = "mm")
+```
+

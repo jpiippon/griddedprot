@@ -1,0 +1,37 @@
+---
+title: "Suitabilities"
+author: "Johannes Piipponen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Explore suitability indices in MapSPAM crop production areas
+
+```{r}
+SI_over75_fraction <- 
+  here("Data", "Input", "from_harddrive",
+       "SI_over75_fraction_5arcmin.tif") %>% 
+  rast()
+plot(SI_over75_fraction, main = "frac of land where SI > 75") # near corn belt SI very suitable almost everywhere
+plot(r_fraction_of_crops_in_cell, main = "frac of MapSPAM in cell")
+
+# Mask fraction of crops to areas where land is very suitable for crop prod
+r_fraction_of_crops_in_cell_SIover75 <- 
+  mask(r_fraction_of_crops_in_cell, SI_over75_fraction, maskvalues = 0)
+
+plot(r_fraction_of_crops_in_cell_SIover75, main = "MapSPAM areas where SI > 75")
+plot(SI_over75_fraction, main = "SI over 75 fraction")
+plot(r_fraction_of_crops_in_cell, main = "fraction of MapSPAM crops in cell in 2010")
+
+  ## find where there could be more crops than presently
+r_more_area_of_cell_could_be_used_for_crops <-
+   SI_over75_fraction - r_fraction_of_crops_in_cell # if > 0 there is more potential than now
+plot(r_more_area_of_cell_could_be_used_for_crops )
+
+# delete neg values
+test1 <- r_more_area_of_cell_could_be_used_for_crops
+test1[test1 < 0] <- NA
+plot(test1, main = "fraction of cell where more crops could be produced")
+```
+
+# explore what is protein production potential on these regions

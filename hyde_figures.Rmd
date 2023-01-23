@@ -1,0 +1,532 @@
+---
+title: "Figures"
+author: "Johannes Piipponen"
+date: "2022-11-04"
+output: html_document
+---
+
+
+! Varmista että kuviot perustuvat lopulta simuloituun dataan!
+! 
+
+
+# Additional packages (in addition to those found in packages_etc_run_this_first.R)
+
+```{r include = F}
+packages <-  c("Rfast", "matrixStats")
+lapply(packages, require, character.only = TRUE)
+```
+
+
+# Get and process simulated AGB data
+
+
+
+
+# Process simulated AGB ---- now commented out to speed up
+- Calculate median AGB over 2008-2012
+- Calculate interannual variability IV
+- Calculate uncertainty estimates CV
+
+
+```{r}
+# get simulated data
+# r_agb_hydeareas_kg_km2 <-
+#   here("Data", "Input", "from_harddrive",
+#        "simulation_results_HYDEareas_nppv061_5arcmin_n1000.tif") %>% 
+#   rast()
+# 
+# 
+# sim_df <-   r_agb_hydeareas_kg_km2 %>% 
+#   as.data.frame(., xy = T) %>% 
+#   as_tibble()
+# 
+# 
+#   ## calculate 5 years median for AGB
+# agb_med_vars <- sim_df %>%  
+#   dplyr::select(ab_med_2008,ab_med_2009,ab_med_2010, ab_med_2011,ab_med_2012) 
+# 
+# agb_5y_med_kg_km2 <- agb_med_vars %>% 
+#   mutate(agb_med_median = rowMedians(as.matrix(agb_med_vars),na.rm = TRUE)) %>% 
+#   bind_cols(sim_df %>% dplyr::select(x,y)) %>%  
+#   dplyr::select(x,y, agb_med_median) %>% 
+#   rast(., type = "xyz", crs = "EPSG:4326") %>% 
+#   resample(., template_rast_5arcmin)
+#   ## convert to kg per ha for figs
+# agb_5y_med_kg_ha <- agb_5y_med_kg_km2 / 100
+# 
+# 
+# 
+# 
+#   ## calculate Interannual variability for AGB
+# ab_iv <- sim_df %>%
+#   dplyr::select(contains("ab_med")) %>%
+#   mutate(iv_ab = 100* as.matrix(.) %>% rowcvs()) %>%
+#   bind_cols(sim_df %>% dplyr::select(x,y)) %>%  # get the coordinates
+#   dplyr::select(x,y, iv_ab) %>%
+#   rast(., type = "xyz", crs = "EPSG:4326") %>% 
+#   resample(., template_rast_5arcmin)
+# 
+# 
+# 
+#   ## calculate CV for AGB
+# ab_cv_vars <- sim_df %>%  
+#   dplyr::select(ab_cv_2008,ab_cv_2009,ab_cv_2010, ab_cv_2011,ab_cv_2012) 
+# 
+# ab_cv <- ab_cv_vars %>% 
+#   mutate(ab_cv_average = rowMedians(as.matrix(ab_cv_vars),na.rm = TRUE)) %>% 
+#   bind_cols(sim_df %>% dplyr::select(x,y)) %>%  
+#   dplyr::select(x,y, ab_cv_average) %>% 
+#   rast(., type = "xyz", crs = "EPSG:4326") %>% 
+#   resample(., template_rast_5arcmin)
+# 
+# 
+# # -------------------------- combine files that are derived from simulated agb
+# r_simulated_agb_vars <- c(
+#   agb_5y_med_kg_km2,
+#   ab_iv,
+#   ab_cv)
+# 
+# writeRaster(r_simulated_agb_vars, filename = 
+#               here("Data", "Intermediate_input", "simulated_agb5v_agbIV_agbCV.tif"))
+
+
+################################## get the file
+r_simulated_agb_vars <- 
+  here("Data", "Intermediate_input", "simulated_agb5v_agbIV_agbCV.tif") %>% 
+  rast()
+plot(r_simulated_agb_vars)
+```
+
+# Color palettes for plotting
+
+```{r}
+pal_npp <- scico(n = 5,begin = 0.6, end = 1, palette = "corkO")
+# scico(n = 6, palette = "bamako", direction = -1, begin = 0.5, end = 1)
+pal_agb <- scico(n = 6, palette = "bamako", direction = -1)
+pal_protein <- scico(n = 10, palette = "hawaii", begin = 0.05,end = 0.85,
+                              direction = -1)
+pal_fcr <- scico(n = 6, palette = "tokyo", direction = -1)
+pal_cv <-  scico(n = 6, palette = "nuuk", direction = -1)
+```
+
+
+# Plot AGB in HYDE areas (kg per ha) 
+! Country borders or just use regions instead?
+
+
+```{r}
+  ## AGB
+(plt_agb_hyde_over2008_2012_kg_ha <- 
+    create_index_map(r_index = r_simulated_agb_vars$agb_med_median / 100, # div by 100 to get unit as kg/ha 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Median aboveground biomass (AGB) in Hyde areas over 2008-2012",
+                     index_label = "AGB kg/ha",
+                     colorpal = pal_agb, 
+                     breakvals =  c(-Inf,500,1000,2000,3000,4000, Inf), 
+                     breaknames = c( "< 500", "500-1000","1000-2000",
+                                     "2000-3000", "3000-4000", "> 4000")) ) 
+
+
+  ## Interannual variability
+(plt_agb_iv <- 
+  create_index_map(r_index = r_simulated_agb_vars$iv_ab ,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Interannual variability in AGB over 2001-2020 [%]",
+                   index_label = "IV in %",
+                   colorpal = pal_cv,
+                   breakvals = c(0,10,20,30,40,50,Inf),
+                   breaknames = c("< 10",
+                                  "10-20",
+                                  "20-30",
+                                  "30-40",
+                                  "40-50",
+                                  "> 50"))) 
+
+
+(plt_agb_cv<-
+  create_index_map(r_index = r_simulated_agb_vars$ab_cv_average *100,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Uncertainty related to aboveground biomass (AGB) measured with coefficient of variation (CV)",
+                   index_label = "CV in %",
+                   colorpal = pal_cv,
+                   breakvals = c(0,10,20,30,40,50,Inf),
+                   breaknames = c("< 10",
+                                  "10-20",
+                                  "20-30",
+                                  "30-40",
+                                  "40-50",
+                                  "> 50"))) 
+
+
+
+## save these together with average FCR map ---> saved in next chunk
+
+# tmap_save(plt_agb_hyde2010_kg_ha, # not this
+#           here("Figures", "AGB_in_HYDEareas.pdf"),
+#           width = 180, height = 150, units = "mm")
+```
+
+
+# Plot FCR for different animals species -- add to supplementary instead?
+
+```{r}
+(plt_fcr_dairy <- 
+    create_index_map(r_index = f_FCR_raster("Dairy cattle") ,
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Feed conversion ratio for dairy cattle",
+                     index_label = "[kg AGB / kg protein]",
+                     colorpal = pal_fcr,
+                     breakvals = c(-Inf,100,200, 300,400,500,Inf),
+                     breaknames = c("<100","100-200","200-300","300-400","400-500", ">500"))) 
+
+
+
+(plt_fcr_beef <- 
+    create_index_map(r_index = f_FCR_raster("Beef cattle") ,
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Feed conversion ratio for beef cattle",
+                     index_label = "[kg AGB / kg protein]",
+                     colorpal = pal_fcr,
+                     breakvals = c(-Inf,100,200, 300,400,500,Inf),
+                     breaknames = c("<100","100-200","200-300","300-400","400-500", ">500"))) 
+
+
+(plt_fcr_sheepgoat <- 
+    create_index_map(r_index = f_FCR_raster("Sheep and goats") ,
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Feed conversion ratio for sheep and goats",
+                     index_label = "[kg AGB / kg protein]",
+                     colorpal = pal_fcr,
+                     breakvals = c(-Inf,100,200, 300,400,500,Inf),
+                     breaknames = c("<100","100-200","200-300","300-400","400-500", ">500"))) 
+
+
+## -------------  average FCR
+(plt_fcr_on_average <- 
+    create_index_map(r_index = fcr_average ,
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Average feed conversion ratio of different animal species",
+                     index_label = "[kg AGB / kg protein]",
+                     colorpal = pal_fcr,
+                     breakvals = c(-Inf,100,200, 300,400,500,Inf),
+                     breaknames = c("<100","100-200","200-300","300-400","400-500", ">500"))) 
+
+
+
+  ## average FCR calculated using simulated median of all reported FCR for grazing. E.g for Finland there are couple of reported FCR values (for sheep and goat by Mottet, for beef cattle by Herrero and so on). Let's explore how this simulated median FCR looks like
+# (plt_fcr_simulated_median_average <- 
+#     create_index_map(r_index = r_fcr_average,
+#                      tocrs = "ESRI:54030",
+#                      index_main_title = "Average (sim median of all) feed conversion ratio of different animal species",
+#                      index_label = "[Simulated median]",
+#                      colorpal = pal_fcr,
+#                      breakvals = c(-Inf,100,200, 300,400,500,Inf),
+#                      breaknames = c("<100","100-200","200-300","300-400","400-500", ">500"))) 
+
+
+
+plts_fcr <- tmap_arrange(
+  plt_fcr_dairy,
+  plt_fcr_beef,
+  plt_fcr_sheepgoat,
+  plt_fcr_on_average, 
+#  plt_fcr_simulated_median_average,
+  ncol = 2)
+
+tmap_save(plts_fcr, here("Figures", "FCR_beef_dairy_sheepgoat.pdf"))
+
+
+plts_Fig1 <- tmap_arrange(
+  plt_agb_hyde_over2008_2012_kg_ha,
+  plt_agb_iv,
+  plt_agb_cv,
+  plt_fcr_on_average, 
+  ncol = 2)
+
+tmap_save(plts_Fig1, here("Figures", "Fig1_agb_vars_and_average_FCR.pdf"),
+          width = 180, height = 150, units = "mm")
+```
+
+
+
+
+
+# Plot protein production of capacity of animals species 
+- Beef cattle 
+- Dairy cattle
+- Sheep and goats
+- mean(Beef, Dairy, Sheepgoat) protein production raster
+
+```{r}
+(plt_animalprotein_nomask <- 
+    create_index_map(r_index = r_animalprot_fromAGB_kg_ha, # kg per ha
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Animal protein production from aboveground biomass (AGB)",
+                     index_label = "[kg/ha]",
+                     colorpal = pal_protein,
+                     breakvals = c(0,1,5,10, 50,100, Inf),
+                     breaknames = c("0-1","1-5", "5-10",
+                                  "10-50","50-100",  ">100"))) 
+
+
+(plt_animalprotein_nomask_average <- 
+    create_index_map(r_index = r_animalprot_fromAGB_kg_ha$On_average, # kg per ha
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Average animal protein production from aboveground biomass (AGB)",
+                     index_label = "[kg/ha]",
+                     colorpal = pal_protein,
+                     breakvals = c(0,1,5,10, 50,100, Inf),
+                     breaknames = c("0-1","1-5", "5-10",
+                                  "10-50","50-100",  ">100"))) 
+# 
+
+tmap_save(plt_animalprotein_nomask,
+          here("Figures", "Protein_from_AGB_in_HYDEareas_by_species.pdf"),
+          width = 180, height = 150, units = "mm")
+
+
+
+
+
+
+```
+
+
+# Plot comparisons part 1: animal protein vs crop protein 
+- Crop protein production in areas where MapSPAM area overlay with pasturelands 
+- Animal protein in MapSPAM production areas
+- Extra protein animals could produce in MapSPAM production areas
+- Animal protein outside MapSPAM production areas
+
+
+
+```{r}
+ ## total crop protein in 2010 --> US corn belt masked out
+(plt_crop_protein <- # was r_prot_allcrops_sum_mt
+  create_index_map(r_index = r_prot_allcrops_sum_kg_ha, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Total amount of protein 21 crops produced in 2010",
+                   index_label = "[kg/ha]",
+                   colorpal = pal_protein,
+                   breakvals = c(0,1,5,10, 50,100, Inf),
+                   breaknames = c("0-1","1-5", "5-10",
+                                  "10-50","50-100",  ">100"))) 
+
+
+# tmap_save(plt_crop_protein,
+#           here("Figures", "Crop protein production in 2010.pdf"),
+#           width = 180, height = 150, units = "mm")
+
+  ## Animal protein in MapSPAM prod areas ----> ei kosktettu per ha muunnoksen jälkeen
+# (plt_animalprotein_mapspam_areas <- 
+#     create_index_map(r_index = r_animalprot_fromAGB_mt_mapspam_areas$On_average,
+#                      tocrs = "ESRI:54030",
+#                      index_main_title = "Average animal protein production from AGB (nosim median AGB)\non crop production areas (mt)",
+#                      index_label = "[metric tons]",
+#                      colorpal = pal_protein,
+#                      breakvals = c(0,10,20,40,100, 200, Inf),
+#                      breaknames = c("0-10", "10-20","20-40",
+#                                     "40-100","100-200", ">200"))) 
+
+
+
+  ## Extra animal protein ----> ei kosktettu per ha muunnoksen jälkeen
+# (plt_extra_animal_protein_in_crop_prod_areas <- 
+#     create_index_map(r_index = r_extra_protein_mt_mapspam_areas_average,
+#                      tocrs = "ESRI:54030",
+#                      index_main_title = "Extra animal protein production potential\n on crop production areas (mt) (extra = fraction of pixel unutilized by crops)",
+#                      index_label = "[metric tons]",
+#                      colorpal = pal_protein,
+#                      breakvals = c(0,10,20,40,100, 200, Inf),
+#                      breaknames = c("0-10", "10-20","20-40",
+#                                     "40-100","100-200", ">200"))  )
+
+
+
+
+  ## Hyde Animal protein outside MapSPAM crop production areas
+(plt_animal_protein_outside_crop_prod_areas <- 
+    create_index_map(r_index = r_animalprot_fromAGB_outside_MapSPAM_kg_ha,
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Animal protein production potential outside\n crop production areas (mt)",
+                     index_label = "[metric tons]",
+                     colorpal = pal_protein,
+                     breakvals = c(0,10,20,40,100, 200, Inf),
+                     breaknames = c("0-10", "10-20","20-40",
+                                    "40-100","100-200", ">200"))) 
+
+
+(plt_animal_protein_outside_crop_prod_areas_average <- 
+    create_index_map(r_index = r_animalprot_fromAGB_outside_MapSPAM_kg_ha$On_average,
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Average animal protein production outside\n crop production areas (mt)",
+                     index_label = "[metric tons]",
+                     colorpal = pal_protein,
+                     breakvals = c(0,10,20,40,100, 200, Inf),
+                     breaknames = c("0-10", "10-20","20-40",
+                                    "40-100","100-200", ">200"))) 
+
+
+tmap_save(plt_animal_protein_outside_crop_prod_areas_average,
+          here("Figures", "Animal protein outside HYDE areas.pdf"),
+          width = 180, height = 150, units = "mm")
+
+
+plts_protein_production_animals_crops <-
+  tmap_arrange(plt_crop_protein,
+               plt_animalprotein_mapspam_areas,
+               plt_extra_animal_protein_in_crop_prod_areas,
+               plt_animal_protein_outside_crop_prod_areas,
+               ncol = 2               )
+
+
+# tmap_save(plts_protein_production_animals_crops,
+#           here("Figures", "Protein production animals and crops.pdf"),
+#           width = 180, height = 150, units = "mm")
+
+
+hist(r_prot_allcrops_sum_kg_ha, xlim = c(0,250), breaks = 100)
+
+```
+
+# Plot comparisons part 2
+- Crop production areas where animals can produce more protein than crops
+- Animals protein production capacity on areas where crop SI < 10 or SI < 25
+
+ ? what about map showing animal protein production on area where cropland is going to expand 
+
+
+```{r}
+# where protein animals  > protein  crops (in crop prod areas)
+r_crop_prot_animal_prot_ratio <- 
+  r_prot_allcrops_sum_mt_pasturemask /
+  r_animalprot_fromAGB_mt_mapspam_areas_average# div 0 problems?
+
+
+  ## try to map "crops prod less", "crops produce 1-10x more", "crops produce 10-100x more"
+# find colors
+pal_light <- scico(n = 10, palette = "bam", end = 0.7)
+pal_light <- c(pal_light %>% first(1), 
+               pal_light %>% last(3))
+
+  ## map that shows where animal outperforms the crops but also where crops produce 100x more
+(plt_animals_crops_ratio <- 
+    create_index_map_no_cntry(r_index = r_crop_prot_animal_prot_ratio,
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Protein production capacity on croplands, crops vs livestock",
+                     index_label = "Protein production",
+                     colorpal = pal_light, # first color is green
+                     breakvals = c(0, 1, 10, 100, Inf),
+                     breaknames = 
+                       c("crops produce less",
+                         "crops produce 1-10x more",
+                         "crops produce 10-100x more",
+                         "crops produce >100x more"  )  ) )
+
+
+
+
+
+
+
+
+## data from Florian Zabel 2022, modified in suitabilities.R
+## animal protein production on cropland areas where cropland suitability is below 10
+  ## check if this suitability data is the same   
+  ## https://www.nature.com/articles/s41597-022-01632-8#Fun 
+
+#   ## SI < 10
+# (plt_animalprot_in_croplands_where_SI_below10<- 
+#     create_index_map_no_cntry(r_index = r_animal_protein_mt_in_croplands_SI_below10,
+#                      tocrs = "ESRI:54030",
+#                      index_main_title = "Animal protein production on crop production areas where crop suitability < 10",
+#                      index_label = "[metric tons]",
+#                      colorpal = pal_protein,
+#                      breakvals = c(0,10,20,40,100, 200, Inf),
+#                      breaknames = c("0-10", "10-20","20-40",
+#                                     "40-100","100-200", ">200"))  )
+
+  ## SI < 25
+# (plt_animalprot_in_croplands_where_SI_below25<- 
+#     create_index_map_no_cntry(r_index = r_animal_protein_mt_in_croplands_SI_below25,
+#                      tocrs = "ESRI:54030",
+#                      index_main_title = "Animal protein production on crop production areas where crop suitability < 25",
+#                      index_label = "[metric tons]",
+#                      colorpal = pal_protein,
+#                      breakvals = c(0,10,20,40,100, 200, Inf),
+#                      breaknames = c("0-10", "10-20","20-40",
+#                                     "40-100","100-200", ">200"))  )
+
+
+# 
+# plts_animals_outperform_and_lowSI_croplands <-
+#   tmap_arrange(
+#     plt_animals_crops_ratio,
+#     plt_animalprot_in_croplands_where_SI_below10,
+#     plt_animalprot_in_croplands_where_SI_below25,
+#     ncol = 2  )
+# 
+# 
+# tmap_save(plts_animals_outperform_and_lowSI_croplands,
+#           here("Figures", "Animals outperform crops and low SI areas.pdf"),
+#           width = 180, height = 150, units = "mm")
+
+```
+
+
+
+# Plot interannual variability and uncertainty (CV)
+
+```{r}
+(plt_agb_iv <- 
+  create_index_map(r_index = ab_iv ,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Interannual variability in AGB over 2001-2020 [%]",
+                   index_label = "IV in %",
+                   colorpal = pal_cv,
+                   breakvals = c(0,10,20,30,40,50,Inf),
+                   breaknames = c("< 10",
+                                  "10-20",
+                                  "20-30",
+                                  "30-40",
+                                  "40-50",
+                                  "> 50"))) 
+
+
+(plt_agb_cv<-
+  create_index_map(r_index = ab_cv *100,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Uncertainty related to aboveground biomass (AGB) measured with coefficient of variation (CV)",
+                   index_label = "CV in %",
+                   colorpal = pal_cv,
+                   breakvals = c(0,10,20,30,40,50,Inf),
+                   breaknames = c("< 10",
+                                  "10-20",
+                                  "20-30",
+                                  "30-40",
+                                  "40-50",
+                                  "> 50"))) 
+
+
+```
+
+Gather plots from different chuncks
+
+# Plot AGB, AGB IV, AGB CV and FCR_average -- figure 2?
+
+```{r}
+fig2 <- tmap_arrange(
+  plt_agb_5y,
+  plt_agb_iv,
+  plt_agb_cv,
+  plt_fcr_on_average,
+  ncol = 2)
+
+fig2
+
+tmap_save(fig2, 
+          here("Figures", "AGB AGB_IV AGB CV FCR_average.pdf"),
+          width = 180, height = 150, units = "mm")
+```
+

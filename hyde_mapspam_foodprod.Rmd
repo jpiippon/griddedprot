@@ -1,0 +1,891 @@
+---
+title: "HYDE and MapSPAM protein"
+author: "Johannes Piipponen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+! Protein_fraction ym määrityksessä voi olla ongelmia, koska osa soijasta ym käytetään rehuna --> palaveeraa Vilman kanssa
+Koodaa esimerkki jossa näkyy miten tehty
+
+# hankkiudu eroon errorista
+
+```{r}
+plot(cntry_raster)
+cntry_raster
+
+```
+
+
+Calculate protein and kcal fof grazing livestock and crops on existing production areas.
+- use HYDE grazing lands
+
+# Crops - FAO data processing
+- Select crops, calculate protein fraction and kcalPerKg for each crop and country
+
+
+```{r}
+# ---------------------------------------------------------- FAOSTAT download 
+foodBalanceSheets_semiraw <-
+  here("Data", "Input", "faostat", "foodBalanceSheets_E_All_Data_NOFLAG.csv") %>% 
+  read.csv() %>% 
+  dplyr::select(-Element.Code,-Unit ,-c(Y2011:Y2019)) # no need to update the data if we use only 2010?
+
+
+# ---------------------------------------------------------- crops
+my_itemlist_fao <- c(  # in mapspam webpage order
+  "Wheat and products", "Rice and products","Maize and products",
+  "Barley and products", "Millet and products", "Sorghum and products",
+  "Cereals, Other", "Potatoes and products", "Sweet potatoes",
+  "Yams", "Cassava and products", "Roots, Other",  
+  "Beans", "Peas", "Pulses, Other and products",
+  "Soyabeans","Groundnuts", "Coconuts - Incl Copra",
+  "Bananas", "Plantains",  "Vegetables" # 21 crops -- no fruits!
+)
+
+my_elementlist_fao <- c(
+  "Production","Food supply quantity (kg/capita/yr)",
+  "Food supply (kcal/capita/day)", "Protein supply quantity (g/capita/day)"
+)
+
+
+
+fbs_crops <- foodBalanceSheets_semiraw  %>% 
+  filter(Item %in% my_itemlist_fao,
+       Element %in% my_elementlist_fao)
+
+
+
+ ## to wide format. Select only relevant variables
+fbs_crops_wide <- fbs_crops %>% 
+  pivot_wider(names_from = Element, values_from = Y2010) %>% 
+  rename(prod_1000mt = "Production",
+         supply.KgCapYr = "Food supply quantity (kg/capita/yr)",
+         supply.KcalCapD = "Food supply (kcal/capita/day)",
+         prot.gCapD = "Protein supply quantity (g/capita/day)") 
+
+  ## add column where item names corresponds to mapsmap names
+fbs_crops_wide <- fbs_crops_wide %>% 
+  mutate(spamname = case_when(
+    Item == "Wheat and products" ~ "whea",
+    Item == "Rice and products"  ~ "rice",
+    Item == "Barley and products" ~ "barl",
+    Item == "Maize and products" ~ "maiz",
+    Item == "Millet and products"  ~ "pmil", # not all of the millets in this
+    Item == "Sorghum and products"  ~ "sorg",
+    Item == "Cereals, Other"   ~ "ocer",
+    Item == "Cassava and products"   ~ "cass",
+    Item == "Potatoes and products" ~ "pota",
+    Item == "Sweet potatoes"  ~ "swpo",
+    Item == "Roots, Other"  ~ "orts",
+    Item == "Beans"  ~ "bean",
+    Item == "Peas"  ~ "chic", # not all peas in this
+    Item == "Pulses, Other and products"  ~ "opul", # not all pulses in this
+    Item == "Soyabeans"  ~ "soyb",
+    Item == "Groundnuts"   ~ "grou",
+    Item == "Coconuts - Incl Copra"  ~ "cnut",
+    Item == "Vegetables"  ~ "vege",
+    Item == "Bananas"  ~ "bana",
+    Item == "Plantains"  ~ "plnt",
+    Item == "Yams"  ~ "yams"
+  ))
+
+
+
+
+# ------------------------- Calculate fraction of protein and kcal in a product (conversion factor) 
+  ## protein and kcal
+fbs_crops_wide <- fbs_crops_wide %>% 
+  mutate(protein_fraction = (prot.gCapD*365/1000) / supply.KgCapYr,
+         kcalPerKg = (supply.KcalCapD*365)/ supply.KgCapYr)  %>% 
+  mutate_all(function(x) ifelse(is.nan(x) | is.infinite(x), NA, x)) # remove cases where supply = 0 (cases that yield NA values)
+
+
+fbs_crops_wide <- 
+  left_join(fbs_crops_wide,
+            (adm10_simple_faoadded %>% dplyr::select(FAO_ID, NAME)), 
+            by = c("Area.Code" = "FAO_ID"))
+```
+
+
+
+# Animals - FAO data processing
+ - Select meat species, convert meat protein to kcal 
+ 
+```{r}
+# ---------------------------------------- FAOSTAT animal protein to kcal
+fbs_animals <- foodBalanceSheets_semiraw %>% 
+  filter(Item %in% c("Meat", "Bovine Meat", "Mutton & Goat Meat"),
+         Element %in% my_elementlist_fao) 
+
+
+ ## pivot wider
+fbs_animals_wide <- fbs_animals %>% 
+  pivot_wider(names_from = Element, values_from = Y2010) %>% 
+  rename(prod_1000mt = "Production", # eg numbers in FIN equals Lukestat
+         supply.KgCapYr = "Food supply quantity (kg/capita/yr)",
+         supply.KcalCapD = "Food supply (kcal/capita/day)",
+         prot.gCapD = "Protein supply quantity (g/capita/day)") %>% 
+  ## how many kcal one kg of meat protein includes? Varies between species
+  ## create variable protein to kcal ------------------- >> why needed? as it is faster than converting similarly as done for crops with kcalPerKg?
+  mutate(one_kg_prot_to_kcal =  (supply.KcalCapD / prot.gCapD) * 1000,
+         protein_fraction = (prot.gCapD*365/1000) / supply.KgCapYr) %>% # protein fraction for meat products
+  dplyr::select(-Item.Code)
+
+
+  ## combine with geometries
+fbs_animals_wide <- 
+  left_join(fbs_animals_wide,
+            (adm10_simple_faoadded %>% dplyr::select(FAO_ID, NAME)), 
+            by = c("Area.Code" = "FAO_ID"))
+
+#------ ---------------------------------------- raster of prot_to_kcal ratio
+  ## we must convert protein to kcal using conversion rations derived from FBS
+  ## do this with function to get the output for different meat species
+# f_convert_animal_prot_to_kcal <- function(animalcategory) {
+# 
+#   ## select only fao id and animal cagegory (one of Meat, Bovine Meat or Mutton & Goat Meat)
+#   rcl_mat_countries_to_protcal <- fbs_animals_wide %>%
+#     filter(Item == animalcategory) %>%
+#     dplyr::select(Area.Code, one_kg_prot_to_kcal) %>%
+#   ## convert to matrix (reclassification matrix needed inside classify() function)
+#     as.matrix(., ncol = 2)
+# 
+#   ## classify
+#   r_oneKg_of_protein_to_kcal <-
+#     classify(cntry_raster, rcl_mat_countries_to_protcal,
+#              others = NA)
+#   names(r_oneKg_of_protein_to_kcal) <- "one_kg_prot_to_kcal"
+#   return(r_oneKg_of_protein_to_kcal)
+# }
+# 
+# f_convert_animal_prot_to_kcal("Bovine Meat") %>% # needed also for other types of animals
+#   plot(., main = "What is the case with Sudan? Check also values for Taiwan, China, Somalia, Norway")
+
+## do the above with df based operations
+f_convert_animal_prot_to_kcal <- 
+  function(animalcategory) {
+  fbs_animals_wide %>% 
+  filter(Item == animalcategory) %>% 
+  st_as_sf() %>%
+  vect() %>% 
+  rasterize(., template_rast_5arcmin, field = "one_kg_prot_to_kcal")
+  }
+
+f_convert_animal_prot_to_kcal("Bovine Meat") %>% # needed also for other types of animals
+  plot(., main = "What is the case with Sudan? Check also values for Taiwan, China, Somalia, Norway")
+
+
+
+
+```
+
+
+ # Fraction of crops and grazin land area in 5arcmin cells
+
+Below we calculate how much of the land area is covered by crops and grazing lands.
+
+- Needed when calculating values perpixel
+- Also when detecting areas where crops can grow but where grazing is also an option
+
+```{r}
+#---------------------------------- get physical areas for mapspam crops (in ha originally)
+f_physical_area_crops_km2 <- function(cropname_mapspam) {
+  list.files(path = here("Data", "Input", "mapspam", "physical_area") ,
+           pattern = paste0("_", toupper(cropname_mapspam), "_A"), 
+           full.names = TRUE)  %>%  
+  rast() / 100 # div by 100 to get ha --> km2
+}
+f_physical_area_crops_km2("whea") 
+
+
+  ## physical areas for all crops
+mylist_selected_spamcrops <-  fbs_crops_wide$spamname %>% unique()
+r_physical_areas_km2 <- lapply(mylist_selected_spamcrops, f_physical_area_crops_km2) %>% 
+  rast()# 21
+names(r_physical_areas_km2) <- mylist_selected_spamcrops
+  ## example plot
+plot(r_physical_areas_km2$whea) 
+r_physical_areas_km2[[c("whea", "rice"),]] %>% plot() 
+
+
+
+
+  ## sum of these areas, read as "area of crop species in cell  combined"
+r_physical_areas_crops_sum <- sum(r_physical_areas_km2, na.rm = T) # areas per grid cell. e.g in India lot of area covered by some crops
+plot(r_physical_areas_crops_sum, main = "physical areas of 21 crops (A production, km2)")
+global(r_physical_areas_crops_sum, fun = "sum", na.rm = T)/1e6 # 9 milj km2 total --> close to
+# https://www.statista.com/statistics/201774/projection-for-total-global-cropland-area-from-2010/
+# , which estimates it was 859 million ha in 2010 ( = 8.6 milj km2)
+
+  ## fraction of crops in 5arcmin cell
+r_fraction_of_crops_in_cell <-
+  r_physical_areas_crops_sum / cellSize(r_physical_areas_crops_sum, unit = "km")
+names(r_fraction_of_crops_in_cell) <- "fraction_crops"
+
+# plot. e.g in India a large share of land area is cultivated for crops 
+plot(r_fraction_of_crops_in_cell, main = "fraction of 21 crops in 5arcmin cells") ##!! do proper plot out of this
+
+
+
+
+
+
+
+
+
+# ---------------------------------------------- find HYDE grazing land area 
+# ---------------------------------------------- 
+r_grazingland_fraction <- 
+  here("Data", "Input", "from_harddrive", 
+       "fraction_of_cell_that_is_hyde_grazingland.tif") %>%  
+  rast() 
+
+plot(r_grazingland_fraction, main = "fraction of HYDE grazing lands")
+
+
+# -------- mask r_fraction_of_crops_in_cell to grazing lands
+r_fraction_of_crops_in_cell_pasturemask <- r_fraction_of_crops_in_cell %>% 
+  mask(., r_grazingland_fraction, maskvalues = 0 ) # is this needed?
+plot(r_fraction_of_crops_in_cell_pasturemask)
+plot(r_fraction_of_crops_in_cell)
+
+
+# ------------------- find total fraction. Can there be more than 100%? Yes, but not often
+fraction_total <- r_grazingland_fraction + r_fraction_of_crops_in_cell
+hist(fraction_total) # most of them below 1
+
+
+
+
+# -------------------------- mask fraction of grazing lands to crop production areas
+ ## here only cropland areas that contain some pasture too
+r_grazingland_fraction_allocated_to_cropland <- 
+  mask(r_grazingland_fraction, r_fraction_of_crops_in_cell_pasturemask)
+names(r_grazingland_fraction_allocated_to_cropland) <- "fraction_pasture"
+plot(r_grazingland_fraction_allocated_to_cropland, main = "Fraction of HYDE grazing lands in crop production areas")
+
+
+# ---------------------------------------------- MAJOR UPDATE HERE
+# As we use HYDE and existing prod areas, we assume that grazing lands and croplands are not overlapping
+# Thus, when we evaluate how much protein livestock can produce, we don't need to assume that they MUST use smaller fraction of the cell than crops --> raster r_past_competing_with_crops_fraction not needed
+
+# Moreover r_pasture_fract_extraprot is not needed as we now assume that derived animal protein do not locate on same areas as crops
+
+
+# # convert to data frame and find pasture area to which we calculate protein production
+# # Now we are interested in protein production capacity in areas where both crops and animals are detected
+# # Assumptions: to be able to compare protein production of crops and pastures in the same area, we assume that pasture area is less or equal than crop production area. For example, if HYDE pasture area in a pixel is 60% and detected cropland area 30%, we examine pasture production only in the area where crops are growing (30% of cell). Otherwise there might be more animal protein in a cell but this results just in larger area. 
+# df_fractions_of_crops_and_pasture <-
+#   c(r_fraction_of_crops_in_cell_pasturemask, r_grazingland_fraction_allocated_to_cropland ) %>% 
+#   as.data.frame(., xy = T) %>% 
+#   as_tibble() %>% 
+#   mutate(fract_pasture_MAX_fract_crops = ifelse(
+#     fraction_pasture <= fraction_crops, # if pasture are is smaller than equal to crop area
+#     fraction_pasture, # choose pasture area (e.g 20% pasture, 50% crops --> both in 20% of cell)
+#     fraction_crops # otherwise choose crop production area (e.g. 50% pasture, 10% crops --> both in 10% of cell)
+#   ))
+# 
+#   ## add a column that shows how much more animal based protein could be produced in mapspam crop production areas. So, if  fraction_pasture (0.2) < fraction_crops (0.4) return 0 but e.g. if fraction_pasture = 0.6 and fraction_crops = 0.4 the "extra" protein from animals can be produced in area that equals 20% of cell. Later 0.2 * AGB * FCR
+# df_fractions_of_crops_and_pasture <- df_fractions_of_crops_and_pasture %>% 
+#   mutate(past_area_extraprot = ifelse(
+#     fraction_pasture >= fraction_crops, # if pasture area is larger (60%) or equal to crop area (20%),
+#     (fraction_pasture - fraction_crops), # choose the difference (extra protein crops cannot use: 40% of cell)
+#     0 # otherwise choose 0 (no extra animal protein) !! NOT COMPLETELY TRUE as these can be mutually exlusive: 20% pasture and 25% crops --> some of the pasture can still be outside crop production area. However, we cannot be sure and therefore we assume extra protein = 0 in this case
+#     ))
+# 
+# 
+# 
+# # df_xy_fract_pasture_MAX_fract_crops <- 
+# #   df_fractions_of_crops_and_pasture %>%
+# #   dplyr::select(x, y, fract_pasture_MAX_fract_crops)
+# # 
+# # r_past_competing_with_crops_fraction <-
+# #   rast(df_xy_fract_pasture_MAX_fract_crops, 
+# #        type = "xyz", crs = "EPSG:4326")
+# # 
+# #  ## resample to get complete ext and 0 0 origin
+# # r_past_competing_with_crops_fraction <- 
+# #   resample(r_past_competing_with_crops_fraction, template_rast_5arcmin) 
+# # 
+# # plot(r_past_competing_with_crops_fraction, 
+# #      main = "Fraction of HYDE grazin lands in crop prod areas. Assuming pastureFrac cannot be > cropFrac")
+# 
+# 
+# 
+# 
+# r_pasture_fract_extraprot <-  df_fractions_of_crops_and_pasture %>%
+#   dplyr::select(x, y, past_area_extraprot) %>% 
+#   rast(., type="xyz") 
+# 
+# r_pasture_fract_extraprot <- 
+#   resample(r_pasture_fract_extraprot, template_rast_5arcmin)
+# 
+# plot(r_pasture_fract_extraprot, main = 
+# "Fraction of cell that could be used to produce grass based protein in crop prod areas")
+
+
+
+
+
+```
+
+# MapSPAM crop production to protein and kcal
+
+- Mika's comment of different usage of crops. E.g large fraction of rapeseed used elsewhere and humans consume mostly oil. If we use energy content of rapeseed oil for total rapeseed production we might get biased estimates
+- Ask Mika and Vilma to think whether this is a problem with this study -------------------------- ongelma varmaan soijan kanssa!
+- f_crop_protein_production_mt function done based on reclassification matrix. DF based solution would work but not so efficient here as we multiply country-spesific protein fractions with the grid
+
+```{r}
+  ## get the pdoruction data for all 21 crops with function
+f_global_prod_crops_mt <- function(cropname_mapspam) {
+  list.files(path = here("Data", "Input", "mapspam", "global_prod") ,
+             pattern = paste0("P_", toupper(cropname_mapspam), "_A"),
+             full.names = TRUE)  %>%
+    rast()
+}
+
+f_global_prod_crops_mt("whea") # returns raster, unit = mt per pixel
+
+
+  ## 21 global production rasters in same stack
+r_global_prod_crops_mt<- lapply(mylist_selected_spamcrops, f_global_prod_crops_mt) %>%
+  rast()# 21 -- not all millets there for example
+# global(r_global_prod_crops_mt, fun = "sum", na.rm = T)/1e6 # global wheat yield seems to be correct, around 675 Mt
+names(r_global_prod_crops_mt) <- mylist_selected_spamcrops
+
+
+
+#------------------------------------------------------- crop protein production
+f_crop_protein_production_mt <- function(cropname_mapspam) {
+  
+  ## get protein fraction for spesific crop species
+  faoid_and_prot_frac <-
+    fbs_crops_wide %>%
+    filter(spamname == cropname_mapspam) %>%
+    dplyr::select(Area.Code, protein_fraction)
+  
+  ## reclassification matrix
+  rcl_mat_countries_to_prot_frac <-
+    matrix(c(
+      faoid_and_prot_frac$Area.Code,
+      faoid_and_prot_frac$protein_fraction),
+      ncol = 2)
+  
+  ## classify. Creates a raster with protein fraction
+  r_fraction_prot  <- cntry_raster %>% 
+    classify(rcl_mat_countries_to_prot_frac, others = NA)
+  
+  ## protein production raster
+  r_prot <- 
+    f_global_prod_crops_mt(cropname_mapspam) * r_fraction_prot
+  names(r_prot) <- paste0(cropname_mapspam, "_prot")
+  
+  return(r_prot)
+}
+
+# eg wheatW
+f_crop_protein_production_mt("whea") %>% plot() # mean 80
+
+
+
+################### lapply for all items -- 25 sec total
+r_prot_allcrops_mt <- lapply(unique(fbs_crops_wide$spamname),
+                          f_crop_protein_production_mt) %>% 
+  rast() # !! check protein produced by sorgum, vegetables and bananas!
+
+ ##  sum: how much prot in cell total ! Double check that it is perpixel
+r_prot_allcrops_sum_mt <- sum(r_prot_allcrops_mt, na.rm = T)
+
+ ## resample to get complete ext and 0 0 origin
+r_prot_allcrops_sum_mt <- 
+  resample(r_prot_allcrops_sum_mt, template_rast_5arcmin) 
+
+plot(r_prot_allcrops_sum_mt, 
+     main = "21 crops sum of protein mt -no grazing land mask") # 3rd Qu = 314
+
+
+
+#---------- create crop production raster that overlays with pastureland raster
+# Now our MapSPAM crop raster includes also areas that don't belong to HYDE grazing lands ----> check those areas
+r_prot_allcrops_sum_mt_pasturemask <- r_prot_allcrops_sum_mt %>% 
+  mask(., r_grazingland_fraction, maskvalues = 0) 
+
+
+plot(r_prot_allcrops_sum_mt_pasturemask, main = 
+       "21 crops sum of protein overlaying with grazing lands (mt)")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ----------------------------------------------------- kcal production of crops
+ ## same as above but convert production to kcal instead
+# f_crop_kcal_prod_MM <- function(cropname_mapspam) {
+# 
+#   ## get protein fraction for spesific crop species
+#   faoid_and_kcalPerKg <-
+#     fbs_crops_wide %>%
+#     filter(spamname == cropname_mapspam) %>%
+#     dplyr::select(Area.Code, kcalPerKg)
+# 
+#   ## reclassification matrix
+#   rcl_mat_countries_to_kcalPerKg <-
+#     matrix(c(faoid_and_kcalPerKg$Area.Code, faoid_and_kcalPerKg$kcalPerKg),
+#            ncol = 2)
+# 
+#   ## classify. Creates a raster with kcalPerKg for spesific crop
+#   r_kcalPerKg  <- cntry_raster %>%
+#     classify(rcl_mat_countries_to_kcalPerKg, others = NA)
+# 
+#   ## kcal production raster --- check
+#   r_kcal <-
+#     # divide as production unit = mt and our desired unit = million
+#     (f_global_prod_crops_mt(cropname_mapspam) / 1000) * r_kcalPerKg
+#   names(r_kcal) <- paste0(cropname_mapspam, "_kcal")
+# 
+#   return(r_kcal)
+# }
+# f_crop_kcal_prod_MM("whea") %>% plot()
+
+  ## same as above but without reclassification matrix
+f_crop_kcal_prod_MM <- function(cropname_mapspam) {
+  
+  ## create kcalPerKg raster
+  r_kcalPerKg_crops <-
+    fbs_crops_wide %>% # includes geometries
+    filter(spamname == cropname_mapspam) %>% # find crop from FAOSTAT table
+    dplyr::select(Area.Code, Area, Item, prod_1000mt, kcalPerKg, geom) %>% 
+    st_as_sf() %>%
+    vect() %>% 
+    rasterize(., template_rast_5arcmin, field = "kcalPerKg") # convert kcalPerKg to rast
+  
+  
+  ## multiply with production raster
+  r_MMkcal_crop <- 
+    r_kcalPerKg_crops * f_global_prod_crops_mt(cropname_mapspam) * 1000 / 1e6
+  names(r_MMkcal_crop) <- paste0(cropname_mapspam, "_MMkcal")
+  return(r_MMkcal_crop)
+}
+
+
+  ## lapply for all items
+
+r_kcal_allcrops_MM <- lapply(unique(fbs_crops_wide$spamname),
+                             f_crop_kcal_prod_MM) %>%
+  rast()
+
+
+  ##  sum: how much kcal (in million kcal) in cell total
+r_kcal_allcrops_sum_MM <- sum(r_kcal_allcrops_MM, na.rm = T)
+plot(r_kcal_allcrops_sum_MM, main = "21 crops sum of kcal MM") # google world maiz/whea/rice production -- looks similar
+
+
+
+# Print total production and protein & kcal production to tibble 
+tot_sums_cropspecies <- data.frame(
+  crop = mylist_selected_spamcrops,
+  prod_Mt = global(r_global_prod_crops_mt, fun = "sum", na.rm = T)/1e6 ,
+  protein_MT = global(r_prot_allcrops_mt, fun = "sum", na.rm = T)/1e6,
+  kcal_MM = global(r_kcal_allcrops_MM, fun = "sum", na.rm = T)/1e6
+)
+names(tot_sums_cropspecies) <- c("crop", "prod_Mt", "protein_Mt", "kcal_MM")
+ # check prod of rice
+
+# Combine production statistics from FAOSTAT
+tot_sums_cropspecies <- left_join(tot_sums_cropspecies,
+                 (fbs_crops_wide %>% 
+                    filter(Area == "World") %>% 
+                    mutate(prod_Mt_FAO = prod_1000mt/1000,
+                           prot_Mt_FAO = prod_Mt_FAO*protein_fraction,
+                           kcal_MM_FAO = prod_Mt_FAO * kcalPerKg/1000)) %>% 
+                   dplyr::select(Item, spamname, prod_Mt_FAO, prot_Mt_FAO, kcal_MM_FAO),
+  by = c("crop" = "spamname"))
+
+tot_sums_cropspecies <- tot_sums_cropspecies %>% 
+  mutate(across(where(is.numeric), round)) # !! large differences in soyabeans!
+
+
+# total sums -- production 4700 milliom tons, protein 200 Mt, energy 170 000 MM kcal 
+tot_sums_cropspecies %>% 
+  group_by() %>% 
+  summarise(sum_productionMT = sum(prod_Mt),
+            sum_productionMT_FAO = sum(prod_Mt_FAO), # productions (FAO & SPAM are close)
+            sum_protein_Mt = sum(protein_Mt), # ! calculate average protein fractions from FAO?
+            sum_protein_Mt_FAO = sum(prot_Mt_FAO),
+            sum_kcal_MM = sum(kcal_MM),
+            sum_kcal_MM_FAO = sum(kcal_MM_FAO)) 
+```
+
+
+
+# Animal protein from HYDE grazing lands  
+
+Calculate how much protein and kcal HYDE grazing lands can produce from AGB. Amount of produced protein is different for different animal species
+
+```{r}
+# AGB in HYDE areas
+r_simulated_agb_vars <- #actually also from hard drive originally
+  here("Data", "Intermediate_input", "simulated_agb5v_agbIV_agbCV.tif") %>% 
+  rast()
+r_agb_hydeareas_kg_km2 <- r_simulated_agb_vars$agb_med_median
+plot(r_agb_hydeareas_kg_km2)
+
+# r_agb_hydeareas_kg_km2 <-
+#   here("Data", "Input", "from_harddrive",
+#        "AGB2010_in_hydeareas_nosim_biomass_kg_km2_5arcmin.tif") %>%  # NO SIM
+#   rast()
+
+
+
+
+
+ ## AGB per pixel without any cropland mask ------ present result kg km2
+r_agb_kg_perpix <-
+  r_agb_hydeareas_kg_km2 * 
+  cellSize(r_agb_hydeareas_kg_km2, unit = "km") * 
+  r_grazingland_fraction
+
+
+# -------------------  AGB in mapspam crop production areas
+r_agb_kg_km2_allocated_to_crop_prod_areas <- 
+  crop_and_mask(r_agb_hydeareas_kg_km2, 
+                r_prot_allcrops_sum_mt_pasturemask) 
+
+plot(r_agb_kg_km2_allocated_to_crop_prod_areas,
+     main = "AGB in mapspam crop production areas")
+
+
+ ## amount of agb in cell in areas where crops are growing. Note that here fraction_pasture cannot be higher than fraction_crops
+r_agb_kg_perpix_allocated_to_crop_prod_areas <-
+  r_agb_kg_km2_allocated_to_crop_prod_areas * 
+  cellSize(r_agb_kg_km2_allocated_to_crop_prod_areas, unit = "km") * 
+  r_grazingland_fraction_allocated_to_cropland
+  #r_past_competing_with_crops_fraction
+
+plot(r_agb_kg_perpix_allocated_to_crop_prod_areas, 
+     main = "AGB perpix in mapspam crop production areas")
+
+
+#------------------------------- extra protein not needed after focusing on existing areas
+ ## extra protein. Pasture based protein that could be produced in crop production areas. E.g fraction of pastureland in cell is 60% and crops are growing in 40% of the cell area, there is still 20% where animals can graze and produce protein (and they are not competing with crops?)
+# r_extra_agb_kg_perpix_on_croplands <- 
+#   r_agb_kg_perpix_allocated_to_crop_prod_areas * 
+#   r_pasture_fract_extraprot #### change!! Nothing converted to protein so far!! No before we have even runned FCR
+# 
+# plot(r_extra_agb_kg_perpix_on_croplands, 
+#      main = "Extra AGB (perpix) that could be produced in mapspam crop production areas")
+```
+
+
+# FCR Food Conversion Ratios
+Next we convert AGB to protein using FCR values reported in literature.
+
+
+FCR calculated for following animal categories (no need for Pigs as they don't graze that much):
+"Beef cattle"     "Dairy cattle"    "Pigs"            "Sheep and goats" ,
+
+
+Production systems (only Grazing needed)
+"Grazing"    "Industrial" "Mixed " 
+
+```{r}
+#------------------------------------------------ FCR created in livestock_fcr.R
+fcr_complete <-
+  read.csv(here("Data", "Input", "other", "fcr_comparison_countries.csv")) %>% 
+  as_tibble() # "Area.Code" on sama kuin df_adm_10m_fao_id datan FAO_ID
+
+
+  ## combine with fao geometries and select production system = Grazing, and drop Pigs 
+
+## 
+adm_10m_fao_id_simple_combined_with_fcr <-
+  fcr_complete %>%
+  filter(Animal.category != "Pigs",
+         prod_sys_2 == "Grazing") %>%
+ # left_join(adm_10m_fao_id_simple, ., by = c("FAO_ID" = "Area.Code"))
+  left_join(adm10_simple_faoadded, ., 
+             by = c("SOVEREIGNT" = "AreaName")) 
+            #  by = c("FAO_ID" = "Area.Code")) # no South Sudan in fcr_complete
+
+
+
+#------------------ Create FCR raster for spesific Animal.Category with function
+f_FCR_raster <- function(animalcategory) {
+  
+  ## create reclassification matrix
+  rcl_mat_countries_to_fcr <-
+  adm_10m_fao_id_simple_combined_with_fcr %>% 
+  filter(Animal.category == animalcategory) %>% 
+  dplyr::select(FAO_ID, FCR_truncated_median) %>% 
+  st_drop_geometry() %>% 
+  as.matrix(., ncol = 2)
+
+
+  ## classify. Creates a raster that shows FCR for different countries
+  r_fcr  <- cntry_raster %>%
+    classify(rcl_mat_countries_to_fcr)
+  names(r_fcr) <- "FCR"
+
+return(r_fcr)
+}
+  
+#f_FCR_raster("Beef cattle")
+plot(f_FCR_raster("Beef cattle"), 
+     main = "FCR raster for Beef") # Sudan visible -- should get values 402 and 407
+qtm(f_FCR_raster("Beef cattle"), title = "FCR raster for Beef cattle") 
+
+  ##  "Dairy cattle"
+qtm(f_FCR_raster("Dairy cattle"), title = "FCR raster for Dairy cattle -- check sudan") 
+qtm(f_FCR_raster("Sheep and goats"), title = "FCR raster for Sheep and goats -- check sudan") 
+
+
+# ----------- create average FCR raster based on mean of simulated FCRs of beef, cattle and sheepgoats
+fcr_average <- (c(
+  f_FCR_raster("Dairy cattle"),
+  f_FCR_raster("Beef cattle"),
+  f_FCR_raster("Sheep and goats")) %>% 
+    mean() ) 
+
+
+```
+
+# Convert AGB in HYDE grazing lands to protein
+
+```{r}
+# define animal species we use in this analysis
+mylist_animal_ctg <- c("Dairy cattle","Beef cattle", "Sheep and goats")
+
+
+# create function that converts AGB to protein for different animal species 
+f_convert_agb_to_animal_prot <- function(animalcategory) {
+  
+  r_protein_mt <-
+    r_agb_kg_perpix /
+    f_FCR_raster(animalcategory) / 
+    1e3
+  
+  names(r_protein_mt) <- animalcategory
+ #   paste0("prot_", animalcategory, "_mt")  %>%    gsub(" ", "", .)
+
+  return(r_protein_mt)
+}
+
+
+r_animalprot_fromAGB_mt <- 
+  lapply(mylist_animal_ctg, f_convert_agb_to_animal_prot) %>% 
+  rast()
+
+  ## add prot prod layer calculated using average FCRs
+r_animalprot_fromAGB_mt_average <-  
+  r_agb_kg_perpix /
+  fcr_average /
+  1e3
+names(r_animalprot_fromAGB_mt_average) <- "On_average"
+
+add(r_animalprot_fromAGB_mt) <- r_animalprot_fromAGB_mt_average
+plot(r_animalprot_fromAGB_mt) 
+
+
+
+
+# -------------------------------------------------
+# create function that converts AGB to protein similarly but in crop production areas
+f_convert_agb_to_animal_prot_croplandmask <- function(animalcategory) {
+  
+  r_animal_protein_mt_in_crop_prod_areas <-
+  r_agb_kg_perpix_allocated_to_crop_prod_areas / 
+    f_FCR_raster(animalcategory) /
+    1e3
+  
+   ## remove 0 values to prevent div 0 errors later
+  r_animal_protein_mt_in_crop_prod_areas[r_animal_protein_mt_in_crop_prod_areas < 0.01] <- 0.01
+  
+  names(r_animal_protein_mt_in_crop_prod_areas) <- animalcategory
+  #   paste0("prot_", animalcategory, "_mt")  %>%  
+  # gsub(" ", "", .)
+  
+  return(r_animal_protein_mt_in_crop_prod_areas)
+}
+
+
+r_animalprot_fromAGB_mt_mapspam_areas <- 
+    lapply(mylist_animal_ctg, f_convert_agb_to_animal_prot_croplandmask) %>% 
+  rast()
+
+
+  ## add prot prod layer calculated using average FCRs
+r_animalprot_fromAGB_mt_mapspam_areas_average <-  
+  r_agb_kg_perpix_allocated_to_crop_prod_areas /
+  fcr_average / 1e3
+r_animalprot_fromAGB_mt_mapspam_areas_average[r_animalprot_fromAGB_mt_mapspam_areas_average < 0.01] <- 0.01
+names(r_animalprot_fromAGB_mt_mapspam_areas_average) <- "On_average"
+
+add(r_animalprot_fromAGB_mt_mapspam_areas) <- 
+  r_animalprot_fromAGB_mt_mapspam_areas_average
+
+
+plot(r_animalprot_fromAGB_mt_mapspam_areas) 
+
+
+
+
+
+
+
+
+
+# ------------------------------------------------- extra protein mapspam --------- no needed after focusing on existing areas
+# r_extra_protein_mt_mapspam_areas_average <-
+#   r_extra_agb_kg_perpix_on_croplands /
+#   fcr_average / 
+#   1e3
+# plot(r_extra_protein_mt_mapspam_areas_average)
+# 
+# 
+# # pastureland areas outside MapSPAM crop prod areas
+r_animalprotein_from_AGB_mt_outside_mapspam_areas <-
+  mask(r_animalprot_fromAGB_mt_average,
+       r_prot_allcrops_sum_mt_pasturemask,
+      inverse = T)
+# 
+# qtm(r_animalprotein_from_AGB_mt_outside_mapspam_areas)
+```
+
+# Convert animal protein to kcal
+
+```{r}
+
+r_animalprot_fromAGB_mt_mapspam_areas # for dairy, beef and sheep and goats in metric tons
+
+ ## Beef
+r_beef_Mkcal <- 
+  r_animalprot_fromAGB_mt_mapspam_areas$`Beef cattle` * 1000 * # kg of protein
+  f_convert_animal_prot_to_kcal("Bovine Meat") / 1e6
+plot(r_beef_Mkcal, main = "Amount of energy beef cattle can produce (millions of kcal, range 0-200)",
+     range = c(0,200))
+
+
+  ## kcal from AGB on pasturelands
+r_animal_kcal_from_AGB_MM <-
+  c(
+    r_animalprot_fromAGB_mt$`Dairy cattle` * 
+    f_convert_animal_prot_to_kcal("Bovine Meat") /1e3,     
+    
+    r_animalprot_fromAGB_mt$`Beef cattle` * 
+    f_convert_animal_prot_to_kcal("Bovine Meat") /1e3, 
+    
+    r_animalprot_fromAGB_mt$`Sheep and goats` * 
+    f_convert_animal_prot_to_kcal("Mutton & Goat Meat") /1e3,
+    
+    r_animalprot_fromAGB_mt$`On_average` * 
+    f_convert_animal_prot_to_kcal("Meat") /1e3
+  )
+names(r_animal_kcal_from_AGB_MM) <-
+  c("DairycatlOnPasture", "BeefcatlOnPasture", "SheepgoatOnPasture", "Meat_avg_Pasture")
+
+
+  ## kcal from AGB on croplands
+r_animal_kcal_from_AGB_on_croplands_MM <-
+  c(
+    r_animalprot_fromAGB_mt_mapspam_areas$`Dairy cattle` * 
+    f_convert_animal_prot_to_kcal("Bovine Meat") /1e3, ## MapSPAM area
+    
+    r_animalprot_fromAGB_mt_mapspam_areas$`Beef cattle` * 
+    f_convert_animal_prot_to_kcal("Bovine Meat") /1e3,
+  
+    r_animalprot_fromAGB_mt_mapspam_areas$`Sheep and goats` * 
+    f_convert_animal_prot_to_kcal("Mutton & Goat Meat") /1e3,
+    
+    r_animalprot_fromAGB_mt_mapspam_areas$`On_average` * 
+    f_convert_animal_prot_to_kcal("Meat") /1e3
+  )
+names(r_animal_kcal_from_AGB_on_croplands_MM) <- 
+  c("DairycatlOnCropland", "BeefcatlOnCropland", "SheepgoatOnCropland", "Meat_avg_Cropland")
+
+r_animal_kcal_from_AGB_on_croplands_MM %>% plot(., range = c(0,200))
+
+```
+
+
+# Convert outputs to kg/ha
+
+Kg per hectare --> should it be tons per ha instead? That would be small number for protein
+
+```{r}
+# -------------------------------------------------------------- crops
+  ## crop production
+r_prot_allcrops_sum_kg_ha <- 
+  r_prot_allcrops_sum_mt / cellSize(r_prot_allcrops_sum_mt, unit = "ha") *
+  1000
+summary(r_prot_allcrops_sum_kg_ha)
+
+  ## crop production on grazing lands --------> is this needed? r_prot_allcrops_sum_mt_pasturemask
+
+# -------------------------------------------------------------- AGB
+r_agb_hydeareas_kg_ha <-
+  r_agb_hydeareas_kg_km2 / 100
+
+  ## agb allocated to SPAM areas --> is this needed? r_agb_kg_km2_allocated_to_crop_prod_areas
+
+# -------------------------------------------------------------- livestock
+  ## animal protein from AGB
+r_animalprot_fromAGB_kg_ha <- 
+  r_animalprot_fromAGB_mt / cellSize(r_animalprot_fromAGB_mt, unit = "ha") *
+  1000
+plot(r_animalprot_fromAGB_kg_ha)
+summary(r_animalprot_fromAGB_kg_ha)
+
+  ## animal protein from AGB outside MapSPAM areas
+r_animalprot_fromAGB_outside_MapSPAM_kg_ha <-
+  mask(r_animalprot_fromAGB_kg_ha, 
+       r_prot_allcrops_sum_kg_ha, inverse = T)
+plot(r_animalprot_fromAGB_outside_MapSPAM_kg_ha$On_average)
+
+```
+
+# Global sums
+
+chat gpt estimates
+"n 2010, all the crops produced a total of around 578 billion kilograms of protein.
+This figure is based on the data provided by the United Nations Food and Agriculture Organization (FAO), which tracks global food production statistics. According to the FAO, in 2010, global cereal production was around 2.3 billion metric tons, of which about 9% is protein. Similarly, global pulse production was around 45.9 million metric tons, of which about 25% is protein."
+
+
+```{r}
+  ## Crop based protein from pasturelands
+global(r_prot_allcrops_sum_mt_pasturemask, fun = "sum", na.rm = T)/1e6 # 219 mmt 
+sum(tot_sums_cropspecies$protein_Mt) # 222 close enough as this one is not masked
+sum(tot_sums_cropspecies$prot_Mt_FAO) # 306 --- due to soyabeans problem etc
+
+  ## Animal based protein from pasturelands. This is per pixel
+global(r_animalprot_fromAGB_mt_average, fun = "sum", na.rm = T)/1e6 # 26 mmt, average refers to average fcr
+  ## Animal based protein from pasturelands that overlay with croplands
+  ## it seems that animals thrive when they can graze large areas, where no one else can go 
+global(r_animalprot_fromAGB_mt_mapspam_areas_average, fun = "sum", na.rm = T)/1e6  # 17 mmt
+  ## Animal based protein outside crop production areas
+global(r_animalprotein_from_AGB_mt_outside_mapspam_areas, 
+         fun = "sum", na.rm = T)/1e6 # 10 mmt --> was 18 so if AGB defined for IGBP classes 6-10, 8 mmt protein more
+
+# !! note that r_animalprot_fromAGB_mt_average is 26mmt = same as  r_animalprot_fromAGB_mt_mapspam_areas_average + r_animalprotein_from_AGB_mt_outside_mapspam_areas
+
+# If we assume that human needs 60g protein per day (21.9kg yr) 
+  ## crops can sustain protein needs of xx people
+
+  ## livestock on cells where also cropland is detected
+
+
+```
+
+
+
+
