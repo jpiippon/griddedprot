@@ -19,7 +19,7 @@ if (!dir.exists("Data/Output")){ dir.create("Data/Output") }
 library(tidyverse); library(raster); library(terra); library(sf)
 library(scico); library(tmap); library(data.table)
 library(here); library(tictoc); library(rmapshaper)
-library(PolyTrend); library(countrycode)
+library(PolyTrend); library(countrycode);library(readxl) 
 
 
 

@@ -30,7 +30,7 @@ mylist_nutritients <- c(
   "SOYBEANS", "GROUNDNUTS", "COCONUTS", "VEGETABLES FRESH NES", "BANANAS",
   "PLANTAINS", "YAMS" ) # 21
 
-nutritients2 <- nutritients %>% 
+nutritients <- nutritients %>% 
   filter(COMMODITY %in% mylist_nutritients) # 21
 
 
