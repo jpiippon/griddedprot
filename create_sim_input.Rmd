@@ -1,0 +1,277 @@
+---
+title: "create_sim_input"
+author: "Gabriel Cramer"
+date: "15/11/2022"
+output: html_document
+---
+
+! Creation of dummy is bit slow. Could it be done using terra::mask() function instead? However, if dummy just work, it is not too slow
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+set up and functions written by Johannes
+
+```{r include = FALSE}
+
+packages_create <-  c("tidyverse", "raster", "terra", "sf", "scico", "tmap", "data.table", "here", "tictoc", "rmapshaper")
+
+lapply(packages_create, require, character.only = TRUE)
+
+# options, mainly for terra package
+#terraOptions()
+
+# timestep
+# timestep_2000_2015 <- 2000:2015 # !! begins in 2000
+# timestep_2000_2020 <- 2000:2020
+# timestep_2001_2015 <- 2001:2015
+# timestep_2001_2020 <- 2001:2020
+# timestep_climnorm <- 1991:2020
+
+template_rast_5arcmin <- rast(nrows=2160, ncols=4320,
+                              crs = "EPSG:4326")
+e <- ext(-180, 180, -90, 90)
+
+```
+
+read some structural data in
+-- read elsewhere
+
+```{r read in polygons for regional breakdowns}
+# Polygons
+# adm_10m <- here("/Users/gabrielcramer/Desktop/aalto/Water & Development/johannes_project/article2/input_data/ne_10m_admin_0_countries.shp") %>% 
+#   read_sf()
+# 
+# Finland_geom <- adm_10m %>% filter(ADMIN == "Finland") %>% dplyr::select(ADMIN) %>% 
+#   as("Spatial") %>%  vect()
+# 
+# Finland_ext <- ext(21, 31.5, 60, 70)
+
+ ## regions
+# reg <- here("/Users/gabrielcramer/Desktop/aalto/Water & Development/johannes_project/article2/input_data/reg_mollw.gpkg") %>%
+#   st_read()
+# reg_wgs <- st_transform(reg, crs = "EPSG:4326") 
+# reg_wgs_vect <- vect(as(reg_wgs, "Spatial"))
+# 
+#   
+# reg_rob <- st_transform(reg, crs = "ESRI:54030") ############# ROBINSON PROJECTION
+# reg_rob <- reg_rob %>% 
+#   mutate(subregion = c("Australia and Oceania", "Central America",
+#                        "East Asia", "Eastern Europe and Central Asia",
+#                        "Ice", "South Asia", "South America", "Middle East",
+#                        "Sub-Saharan Africa", "North Africa", "North America",
+#                        "Southeast Asia", "Western Europe"))
+
+# simplify only for plotting
+#reg_rob_simple <- ms_simplify(reg_rob)
+
+
+## function for cropping and maskin
+# crop_and_mask <- function(r_data, df_cropmask_polygon){
+#   r_data %>%
+#     crop(df_cropmask_polygon) %>% 
+#     mask(df_cropmask_polygon) 
+# }
+
+```
+
+plotting function 
+
+```{r plotting function}
+# function for plotting
+create_index_map <- function(r_index, index_label,index_main_title,
+                             colorpal, breakvals,
+                             breaknames = NULL,
+                             color_midpoint = NULL, tocrs = NA){
+  if (!is.na(tocrs)){
+    r_index <- project(r_index, tocrs, mask = TRUE)
+  }
+  index_map <- tm_shape(r_index) +
+    tm_raster(palette = colorpal,
+              breaks = breakvals,
+              labels = breaknames,
+              title = index_label,
+              midpoint = color_midpoint,
+              legend.reverse = TRUE) +
+    tm_layout(main.title = index_main_title,
+              main.title.position = "left",
+              main.title.size = 1,
+              legend.bg.color = TRUE,
+              legend.outside = TRUE,
+              frame = FALSE)+
+    tm_shape(reg_rob_simple) +
+    tm_borders(col = "grey30", lwd = 0.33)
+
+  return (index_map)
+
+}
+
+```
+
+# Data preparation
+
+```{r inputs}
+## Input data for simulation
+ ## this data contains data needed for AGB simulation --> no animals yet
+ ## actually I am not even sure which animal species will be present in final data
+ ## moreover, the beta version of GLW data I have now contains only years until 2015.
+ ## animal data  will be until 2020
+r_for_simulations <- 
+  # here("/Users/gabrielcramer/Desktop/aalto/Water & Development/johannes_project/article2/input_data/data_all_but_animals_masked_where_pasture_every_year_2001_2020_5arcmin.tif") %>% 
+  # rast()
+
+  here("Data", "Input", "art2_in_E",
+       "data_all_but_animals_masked_where_pasture_every_year_2001_2020_5arcmin.tif") %>% 
+  rast()
+
+names(r_for_simulations)
+
+## -------------------------------------------------------------------- CV data 
+# Sun et al. (2021) Fig 6d CV
+# https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2021JG006472
+
+sun_cv <- here("Data", "Input", "other",
+               "fBNPP_CV_Proj_Clip_Scale_0001.tif") %>% 
+  rast()
+
+ncell(sun_cv)
+sun_cv_agg <- aggregate(sun_cv, fact = 20)
+
+## unscale here
+sun_cv_agg_unscale <- sun_cv_agg / 10000
+
+# project  and resample
+sun_et_al_cv <-  project(sun_cv_agg_unscale, "EPSG:4326") %>% 
+  resample(., template_rast_5arcmin)
+names(sun_et_al_cv) <- "CV_Sun_et_al"
+
+
+
+ ## I first aggregated, projected and resampled the data to 5arcmin resolution
+# sun_et_al_cv <- here("/Users/gabrielcramer/Desktop/aalto/Water & Development/johannes_project/article2/input_data/CV_Sun_et_al_unscaled_5arcmin.tif") %>% 
+#   rast()
+
+## regions
+# reg <- here("/Users/gabrielcramer/Desktop/aalto/Water & Development/johannes_project/article2/input_data/reg_mollw.gpkg") %>%  st_read()
+# reg_wgs <- st_transform(reg, crs = "EPSG:4326") 
+# reg_wgs_vect <- vect(as(reg_wgs, "Spatial"))
+
+```
+
+# Regional Means
+
+The CV values are not given for all pixels we have NPP data for. The approach below is to extract the regional (regions used in analysis) mean CV values, then add the mean value for the region to the empty pixels in that region. The approach used map algebra.
+
+First we extract regional means...
+
+```{r extractregional means}
+
+## regional cv values
+sun_et_al_regional_cv <- extract(sun_et_al_cv, reg_wgs_vect, fun = "mean", na.rm = T)
+sun_et_al_regional_cv <- sun_et_al_regional_cv %>% 
+  mutate(subregion = reg_wgs_vect$Region_new,
+         regnumber = 1:nrow(.))
+
+
+reg_wgs_rast <-
+  reg_wgs %>% 
+  mutate(regnumber = 1:nrow(.)) %>% 
+  as(., "Spatial") %>% 
+  vect() %>% 
+  rasterize(., template_rast_5arcmin,  field = "regnumber")
+
+plot(reg_wgs_rast)
+
+# classify. Change values of reg_wgs_rast so that these represent average CV values
+  ## create reclassification matrix
+rcl_sun_et_al <- sun_et_al_regional_cv %>% 
+  dplyr::select(regnumber, CV_Sun_et_al ) %>% 
+  as.matrix()
+
+  ## classify
+sun_et_al_filled_cv_raster <-
+  reg_wgs_rast %>% 
+  classify(rcl_sun_et_al)
+names(sun_et_al_filled_cv_raster) <- "CV_mean_Sun_et_al"
+
+sun_et_al_filled_cv_raster  %>% qtm(., title = "Filled Sun et al CV")
+```
+
+
+first well plot the CV raster for comparison
+
+```{r plot CV raster for comparison}
+
+plot(sun_et_al_cv) # for comparison
+
+```
+
+
+```{r input regional cv values into cv raster}
+
+sun_et_al_cv <- terra::cover(sun_et_al_cv, sun_et_al_filled_cv_raster, values = NaN)
+plot(sun_et_al_cv)
+
+
+```
+
+However, now there are loads of CV values in areas where there are no NPP values. If we keep it like this, then we get a massive output file with loads of values where we don't want them: for the simulations we need alignment. 
+
+So the next step is to determine which pixels are true NaN pixels for NPP. 
+
+```{r}
+# could this have been done with mask function instead? This works well too!. However, areas covered by any NPP layer is identical with any other NPP layer. E.g npp2001 covers the same area as npp2010
+dummy <- r_for_simulations[[1:20]] %>% 
+  terra::app(., function(x) is.nan(x))
+
+#plot(dummy$npp2005)
+
+dummy <- as.list(dummy)
+mash <- do.call("sum", dummy)
+# hist(values(mash)) 
+#plot(mash)
+mash <- terra::cover(mash, sun_et_al_cv, values = 0)
+#plot(mash)
+# mash <- classify(mash, cbind(20, 9999))
+# plot(mash)
+mash <- classify(mash, cbind(20, NaN))
+#plot(mash)
+names(mash) <- "sun_et_al_cv"
+# names(mash)
+
+
+```
+
+# Output 
+wrap up output
+
+```{r wrap up the data for output}
+
+# wrap up the data for output.
+data_for_simulation <- c(r_for_simulations, mash)
+data_for_simulation$sun_et_al_cv %>% plot(main = "CV Sun et al")
+#data_for_simulation$CV_mean_Sun_et_al %>% plot(main = "CV averages Sun et al")
+data_for_simulation$npp2015 %>% plot(main = "NPP 2015")
+
+# NAflag(data_for_simulation)
+# data_for_simulation <- classify(data_for_simulation[[1]], cbind(NaN, NA))
+# NAflag(data_for_simulation)
+# 
+# data_for_simulation[is.nan(data_for_simulation)] <- NA
+  
+```
+
+save the output, which will be input for the sims.
+Maybe not even needed
+
+```{r save output}
+# Convert data to csv
+# data_for_simulation %>% 
+#   as.data.frame(., xy=TRUE, na.rm = TRUE) %>% 
+#   as.data.table(.) %>% 
+#   fwrite(., here("/Users/gabrielcramer/Desktop/aalto/Water & Development/johannes_project/article2/input_data/data_for_simulations_no_animals3.csv"))
+```
+
