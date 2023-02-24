@@ -5,7 +5,7 @@ date: "2022-11-04"
 output: html_document
 ---
 
-
+! Tee kuvio 2 niin, että siinä on AGB + 3X proteiinikarttaa + 3X kcal karttaa ja ehkä FCR average? ---> muuta niin, että AGB ylhäällä 2 tiilen levyinen ja sitten rinnakkain protein_dairy ja energy_dairy tms
 ! Varmista että kuviot perustuvat lopulta simuloituun dataan!
 ! 
 
@@ -19,9 +19,6 @@ lapply(packages, require, character.only = TRUE)
 
 
 # Get and process simulated AGB data
-
-
-
 
 # Process simulated AGB ---- now commented out to speed up
 - Calculate median AGB over 2008-2012
@@ -104,16 +101,19 @@ plot(r_simulated_agb_vars)
 pal_npp <- scico(n = 5,begin = 0.6, end = 1, palette = "corkO")
 # scico(n = 6, palette = "bamako", direction = -1, begin = 0.5, end = 1)
 pal_agb <- scico(n = 6, palette = "bamako", direction = -1)
-pal_protein <- scico(n = 10, palette = "hawaii", begin = 0.05,end = 0.85,
-                              direction = -1)
+# pal_protein <- scico(n = 10, palette = "hawaii", begin = 0.05,end = 0.85,
+#                               direction = -1) # use lajolla instead!
+pal_protein_lajolla <- scico(n = 6, palette = "lajolla", end = 0.85) 
+
 pal_fcr <- scico(n = 6, palette = "tokyo", direction = -1)
 pal_cv <-  scico(n = 6, palette = "nuuk", direction = -1)
 ```
 
 
+
+
 # Plot AGB in HYDE areas (kg per ha) 
 ! Country borders or just use regions instead?
-
 
 ```{r}
   ## AGB
@@ -168,13 +168,14 @@ pal_cv <-  scico(n = 6, palette = "nuuk", direction = -1)
 ```
 
 
+
 # Plot FCR for different animals species -- add to supplementary instead?
 
 ```{r}
-(plt_fcr_dairy <- 
-    create_index_map(r_index = f_FCR_raster("Dairy cattle") ,
+(plt_fcrs <- 
+    create_index_map(r_index =  r_fcr,
                      tocrs = "ESRI:54030",
-                     index_main_title = "Feed conversion ratio for dairy cattle",
+                     index_main_title = "Feed conversion ratios (FCR) by animal species",
                      index_label = "[kg AGB / kg protein]",
                      colorpal = pal_fcr,
                      breakvals = c(-Inf,100,200, 300,400,500,Inf),
@@ -182,108 +183,179 @@ pal_cv <-  scico(n = 6, palette = "nuuk", direction = -1)
 
 
 
-(plt_fcr_beef <- 
-    create_index_map(r_index = f_FCR_raster("Beef cattle") ,
-                     tocrs = "ESRI:54030",
-                     index_main_title = "Feed conversion ratio for beef cattle",
-                     index_label = "[kg AGB / kg protein]",
-                     colorpal = pal_fcr,
-                     breakvals = c(-Inf,100,200, 300,400,500,Inf),
-                     breaknames = c("<100","100-200","200-300","300-400","400-500", ">500"))) 
+tmap_save(plt_fcrs, here("Figures", "FCRs.pdf"))
 
-
-(plt_fcr_sheepgoat <- 
-    create_index_map(r_index = f_FCR_raster("Sheep and goats") ,
-                     tocrs = "ESRI:54030",
-                     index_main_title = "Feed conversion ratio for sheep and goats",
-                     index_label = "[kg AGB / kg protein]",
-                     colorpal = pal_fcr,
-                     breakvals = c(-Inf,100,200, 300,400,500,Inf),
-                     breaknames = c("<100","100-200","200-300","300-400","400-500", ">500"))) 
-
-
-## -------------  average FCR
-(plt_fcr_on_average <- 
-    create_index_map(r_index = fcr_average ,
-                     tocrs = "ESRI:54030",
-                     index_main_title = "Average feed conversion ratio of different animal species",
-                     index_label = "[kg AGB / kg protein]",
-                     colorpal = pal_fcr,
-                     breakvals = c(-Inf,100,200, 300,400,500,Inf),
-                     breaknames = c("<100","100-200","200-300","300-400","400-500", ">500"))) 
-
-
-
-  ## average FCR calculated using simulated median of all reported FCR for grazing. E.g for Finland there are couple of reported FCR values (for sheep and goat by Mottet, for beef cattle by Herrero and so on). Let's explore how this simulated median FCR looks like
-# (plt_fcr_simulated_median_average <- 
-#     create_index_map(r_index = r_fcr_average,
-#                      tocrs = "ESRI:54030",
-#                      index_main_title = "Average (sim median of all) feed conversion ratio of different animal species",
-#                      index_label = "[Simulated median]",
-#                      colorpal = pal_fcr,
-#                      breakvals = c(-Inf,100,200, 300,400,500,Inf),
-#                      breaknames = c("<100","100-200","200-300","300-400","400-500", ">500"))) 
-
-
-
-plts_fcr <- tmap_arrange(
-  plt_fcr_dairy,
-  plt_fcr_beef,
-  plt_fcr_sheepgoat,
-  plt_fcr_on_average, 
-#  plt_fcr_simulated_median_average,
-  ncol = 2)
-
-tmap_save(plts_fcr, here("Figures", "FCR_beef_dairy_sheepgoat.pdf"))
-
-
-plts_Fig1 <- tmap_arrange(
-  plt_agb_hyde_over2008_2012_kg_ha,
-  plt_agb_iv,
-  plt_agb_cv,
-  plt_fcr_on_average, 
-  ncol = 2)
-
-tmap_save(plts_Fig1, here("Figures", "Fig1_agb_vars_and_average_FCR.pdf"),
-          width = 180, height = 150, units = "mm")
 ```
 
 
 
 
 
-# Plot protein production of capacity of animals species 
+# Plot protein and energy production capacity of grazing animals
+
+How much protein and kcal livestock can produce from AGB?
 - Beef cattle 
 - Dairy cattle
 - Sheep and goats
-- mean(Beef, Dairy, Sheepgoat) protein production raster
+ (mean(Beef, Dairy, Sheepgoat) protein production raster ----> is this mean even needed)
 
 ```{r}
-(plt_animalprotein_nomask <- 
-    create_index_map(r_index = r_animalprot_fromAGB_kg_ha, # kg per ha
+quantile(values(r_protein_from_AGB_kg_ha$dairy), probs = c(seq(0,1, by = 0.1666667)), na.rm =T)
+
+(plt_animalprotein_hydeareas <- 
+    create_index_map(r_index = r_protein_from_AGB_kg_ha, # kg per ha
                      tocrs = "ESRI:54030",
                      index_main_title = "Animal protein production from aboveground biomass (AGB)",
                      index_label = "[kg/ha]",
-                     colorpal = pal_protein,
-                     breakvals = c(0,1,5,10, 50,100, Inf),
-                     breaknames = c("0-1","1-5", "5-10",
-                                  "10-50","50-100",  ">100"))) 
+                     colorpal = pal_protein_lajolla,
+                     breakvals = c(0, 1, 5, 10, 25, 50, Inf),
+                     breaknames = c("<1","1-5", "5-10",
+                                  "10-25","25-50",  ">50"))) 
 
 
-(plt_animalprotein_nomask_average <- 
-    create_index_map(r_index = r_animalprot_fromAGB_kg_ha$On_average, # kg per ha
-                     tocrs = "ESRI:54030",
-                     index_main_title = "Average animal protein production from aboveground biomass (AGB)",
-                     index_label = "[kg/ha]",
-                     colorpal = pal_protein,
-                     breakvals = c(0,1,5,10, 50,100, Inf),
-                     breaknames = c("0-1","1-5", "5-10",
-                                  "10-50","50-100",  ">100"))) 
+# (plt_animalprotein_nomask_average <- 
+#     create_index_map(r_index = r_animalprot_fromAGB_kg_ha$On_average, # kg per ha
+#                      tocrs = "ESRI:54030",
+#                      index_main_title = "Average animal protein production from aboveground biomass (AGB)",
+#                      index_label = "[kg/ha]",
+#                      colorpal = pal_protein,
+#                      breakvals = c(0,1,5,10, 50,100, Inf),
+#                      breaknames = c("0-1","1-5", "5-10",
+#                                   "10-50","50-100",  ">100"))) 
 # 
 
-tmap_save(plt_animalprotein_nomask,
-          here("Figures", "Protein_from_AGB_in_HYDEareas_by_species.pdf"),
-          width = 180, height = 150, units = "mm")
+# tmap_save(plt_animalprotein_nomask,
+#           here("Figures", "Protein_from_AGB_in_HYDEareas_by_species.pdf"),
+#           width = 180, height = 150, units = "mm")
+
+
+
+
+# ------------------------------------------------------------------- energy
+quantile(values(r_kcal_animals_MM_ha$dairy_MMkcal_ha), probs = c(seq(0,1, by = 0.1666667)), na.rm =T)
+
+(plt_animal_kcal_hydeareas <- 
+    create_index_map(r_index = r_kcal_animals_MM_ha, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Livestcok energy production from aboveground biomass (AGB)",
+                     index_label = "[million kcal/ha]",
+                     colorpal = pal_protein_lajolla,
+                     breakvals = c(0, 0.02, 0.05, 0.1, 1, 5, Inf),
+                     breaknames = c("<0.02","0.02-0.05",
+                                  "0.05-0.1","0.1-1", "1-5", ">5"))) 
+
+
+
+
+
+
+plts_fig1_protein_kcal <- tmap_arrange(
+#  plt_agb_hyde_over2008_2012_kg_ha,
+  plt_animalprotein_hydeareas,
+  plt_animal_kcal_hydeareas
+)
+
+plts_fig1_protein_kcal # modify more in illustrator
+
+tmap_save(plts_fig1_protein_kcal, filename = 
+            here("Figures", "fig1 livestock prot kcal.pdf"))
+
+
+
+
+```
+
+
+
+
+
+
+
+# Crops - production, protein and energy and suitabilities
+
+```{r}
+
+# Total production of 21 crops
+(plt_total_production_crops <-
+    create_index_map(r_index = r_global_production_crops_sum_kg_ha, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Combined crop yields of 21 food crops in 2010",
+                   index_label = "[kg/ha]",
+                   colorpal = pal_agb,
+                   breakvals = c(0,2000,4000,6000, 8000, Inf),
+                   breaknames = c("0-2000","2000-4000",
+                                  "4000-6000","6000-8000",  ">8000"))) 
+#summary(r_global_prod_crops_sum_mt) # median 1400 mean 5700 3rd = 5900
+
+
+
+# Protein, crops
+quantile(values(r_prot_allcrops_sum_kg_ha), probs = c(seq(0,1, by = 0.1666667)), na.rm =T)
+
+(plt_crop_protein <- 
+  create_index_map(r_index = r_prot_allcrops_sum_kg_ha, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Protein production of crops in 2010",
+                   index_label = "[kg/ha]",
+                   colorpal = pal_protein_lajolla,
+                   breakvals = c(0, 10, 50, 100, 250, 500, Inf),
+                   breaknames = c("0-10","10-50", "50-100",
+                                  "100-250","250-500",  ">500"))) 
+
+
+
+
+# Energy, crops
+quantile(values(r_kcal_allcrops_sum_MM_ha), probs = c(seq(0,1, by = 0.1666667)), na.rm =T)
+
+
+(plt_crop_kcal <- 
+    create_index_map(r_index = r_kcal_allcrops_sum_MM_ha, # millions of kcal
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Energy production of crops in 2010",
+                     index_label = "[million kcal/ha]",
+                     colorpal = pal_protein_lajolla,
+                     breakvals = c(0, 0.2, 0.5, 1, 10, 50, Inf),
+                     breaknames = c("<0.2","0.2-0.5",
+                                  "0.5-1","1-10", "10-50", ">50"))) 
+
+
+
+
+
+
+# SI, crops --- more about SI classes: https://www.nature.com/articles/s41597-022-01632-8
+SI_5arcmin <- here("Data", "Input", "from_harddrive", "SI_v3.0_5arcmin.tif") %>% 
+  rast() # Change this in harddrive -- 0 value should be excluded first
+
+SI_5arcmin_0_toNA <- classify(SI_5arcmin, cbind(0, NA))
+
+# pal_SI <- scico(n =3, palette = "bam", begin = 0.6)
+# pal_SI <- scico(n =11, palette = "bam")
+# pal_SI <- pal_SI[c(3,7,11)] # this to get light red, light and dark green values
+
+(plt_SI_v3.0 <- create_index_map(r_index = SI_5arcmin_0_toNA, tocrs = "ESRI:54030",
+                     index_main_title = "Overall suitability indices (SI) for crops over 1980-2009",
+                     index_label = "",
+                     colorpal = pal_agb,
+                     breakvals =  c(1, 33, 75, Inf),
+                     breaknames = c("Marginally suitable (1 < SI < 33 )", 
+                                    "Moderately suitable (33 <= SI <= 75 )", "Highly suitable (SI > 75)")) )
+
+
+
+
+
+# ------------------------------------------------------------- arrange and save
+plts_crops <- tmap_arrange(
+  plt_total_production_crops, #  is this relevant?
+  plt_crop_protein,
+  plt_crop_kcal,
+  plt_SI_v3.0
+)
+
+plts_crops
+tmap_save(plts_crops, here("Figures", "crop protein energy and SI.pdf"))
 
 
 
@@ -293,8 +365,183 @@ tmap_save(plt_animalprotein_nomask,
 ```
 
 
+# Plot comparison part 1
+-shares of total protein
+
+```{r}
+
+# (plt_combined <-
+#     create_index_map(r_index = r_protein_combined_kg_ha,
+#                      tocrs = "ESRI:54030",
+#                      index_main_title = "Combined protein production (crops + grazing livestock)",
+#                      index_label = "[kg/ha]",
+#                      colorpal = pal_protein,
+#                      breakvals = c(0,1,5,10, 50,100, Inf),
+#                      breaknames = c("0-1","1-5", "5-10",
+#                                   "10-50","50-100",  ">100")))
+
+
+
+
+
+# share of protein originatin from crops
+pal_share <-  scico(n = 7, palette = "davos", begin = 0.2, end = 0.9, direction = -1) 
+pal_share1 <-  scico(n = 10, palette = "bam", begin = 0.1, end = 0.9, direction = -1) 
+pal_share2 <-  scico(n = 10, palette = "roma", begin = 0.1, end = 0.9, direction = -1) 
+
+# (plt_shareofcrops_of_total_protein <- 
+#     create_index_map(r_index = r_share_of_total_protein_crops, # toimiii, pitää toki vielä hioa
+#                      tocrs = "ESRI:54030",
+#                      index_main_title = "Share of total protein iriginating from crops",
+#                      index_label = "",
+#                      colorpal = pal_share,
+#                      breakvals = c(0, 10, 20, 40, 60, 80, 100),
+#                      breaknames = c("<10", "10-20", "20-40","40-60","60-80", ">80")))
+
+
+
+
+  ## share of livestock of total protein
+(plt_shareoflivestock_of_total_protein <- 
+    create_index_map(r_index = r_share_of_total_protein_livestock, # toimiii, pitää toki vielä hioa
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Contribution of livestock to total protein production",
+                     index_label = "<---crops produce more           livestock produce more --->",
+                     colorpal = pal_share2,
+                     breakvals = c(0, 10, 20, 40, 60, 80, 100),
+                     breaknames = c("<10", "10-20", "20-40","40-60","60-80", ">80")))
+
+
+
+  ## share of livestock of total protein on cropland areas
+(plt_shareoflivestock_of_total_protein_croplandmask <- 
+    create_index_map(r_index = r_share_of_total_protein_livestock_croplandmask, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Contribution of livestock to total protein production on croplands",
+                     index_label = "<---crops produce more           livestock produce more --->",
+                     colorpal = pal_share2,
+                     breakvals = c(0, 10, 20, 40, 60, 80, 100),
+                     breaknames = c("<10", "10-20", "20-40","40-60","60-80", ">80")))
+
+
+
+  ## share of livestock of total protein on croplands where SI below 10 -- first masked SIbelow 10 to croplands and then livestock raster is masked with that one
+(plt_shareoflivestock_of_total_protein_SIbelow10_croplandmask <- 
+    create_index_map(r_index = r_share_of_total_protein_livestock_SIbelow10mask_croplandmask, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Contribution of livestock to total protein production on croplands where SI < 10",
+                     index_label = "<---crops produce more           livestock produce more --->",
+                     colorpal = pal_share2,
+                     breakvals = c(0, 10, 20, 40, 60, 80, 100),
+                     breaknames = c("<10", "10-20", "20-40","40-60","60-80", ">80")))
+
+
+
+
+plts_shareofprotein <-
+tmap_arrange(
+  plt_shareoflivestock_of_total_protein,
+  plt_shareoflivestock_of_total_protein_croplandmask,
+  plt_shareoflivestock_of_total_protein_SIbelow10_croplandmask,
+  ncol = 3
+)
+plts_shareofprotein
+
+tmap_save(plts_shareofprotein, filename = here("Figures", "plts_shareofprotein.pdf"))
+```
+
+
+
+
+
+
+
+# Plot comparisons part 2 - potentials
+From suitabilities script
+
+```{r}
+
+(plt_r_share_SIover75max <- 
+    create_index_map(r_index = r_fraction_SIover75_max_0toNA*100, # updated so 0 areas are white
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Share of very suitable land area that could be used for crop production",
+                     index_label = "% of cell",
+                     colorpal = pal_share_nuuk,
+                     breakvals = c(0, 10, 20, 40, 60, 80, 100),
+                     breaknames = c("<10", "10-20", "20-40", "40-60","60-80", "80-100")))
+
+
+
+(plt_percent_gl_should_decline <- 
+    create_index_map(r_index = r_how_many_percent_gl_should_decline_0toNA, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "How much grazing lands area could decline (to make space for crops)",
+                     index_label = "%",
+                     colorpal = pal_share_nuuk,
+                     breakvals = c(0, 10, 20, 60, 80, 100, Inf),
+                     breaknames = c("<10", "10-20", "20-60", "60-80", "80-100", ">100")))
+
+
+(plt_percent_cl_should_increase <- 
+    create_index_map(r_index = r_how_many_percent_cl_should_increase, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "How much cropland area could increase (at the cost of grazing lands)",
+                     index_label = "",
+                     colorpal = pal_share_nuuk,
+                     breakvals = c(0, 10, 20, 60, 80, 100, Inf),
+                     breaknames = c("<10", "10-20", "20-60", "60-80", "80-100", ">100")))
+
+
+
+(plt_r_optimized_protein_yield_larger <-
+      create_index_map(r_index = r_optimized_protein_yield_larger$dairy, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Optimised protein production compared to original combined protein production \n (here dairy + crops considered)",
+                     index_label = "%",
+                     colorpal = pal_share_nuuk,
+                     breakvals = c(-Inf, 1, 20, 50, 100, Inf),
+                     breaknames = c("No change", "<20", "20-50", "50-100", ">100")))
+
+
+plts_optimised <- tmap_arrange(
+  plt_r_share_SIover75max,
+  plt_percent_gl_should_decline,
+  plt_percent_cl_should_increase,
+  plt_r_optimized_protein_yield_larger
+)
+
+tmap_save(plts_optimised, here("Figures", "plts_optimised.pdf"))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 33333333333333333333333333333333333333333333333333333333333333 old after this
+
 # Plot comparisons part 1: animal protein vs crop protein 
-- Crop protein production in areas where MapSPAM area overlay with pasturelands 
+- Crop protein production in areas where MapSPAM area overlay with pasturelands ----- no overlay needed
 - Animal protein in MapSPAM production areas
 - Extra protein animals could produce in MapSPAM production areas
 - Animal protein outside MapSPAM production areas
@@ -302,16 +549,6 @@ tmap_save(plt_animalprotein_nomask,
 
 
 ```{r}
- ## total crop protein in 2010 --> US corn belt masked out
-(plt_crop_protein <- # was r_prot_allcrops_sum_mt
-  create_index_map(r_index = r_prot_allcrops_sum_kg_ha, 
-                   tocrs = "ESRI:54030",
-                   index_main_title = "Total amount of protein 21 crops produced in 2010",
-                   index_label = "[kg/ha]",
-                   colorpal = pal_protein,
-                   breakvals = c(0,1,5,10, 50,100, Inf),
-                   breaknames = c("0-1","1-5", "5-10",
-                                  "10-50","50-100",  ">100"))) 
 
 
 # tmap_save(plt_crop_protein,
@@ -390,9 +627,14 @@ hist(r_prot_allcrops_sum_kg_ha, xlim = c(0,250), breaks = 100)
 
 ```
 
+
+
+
+
+
 # Plot comparisons part 2
 - Crop production areas where animals can produce more protein than crops
-- Animals protein production capacity on areas where crop SI < 10 or SI < 25
+- Animals protein production capacity on areas where crop SI < 10 or crop prod areas where SI > 75?
 
  ? what about map showing animal protein production on area where cropland is going to expand 
 
@@ -436,8 +678,11 @@ pal_light <- c(pal_light %>% first(1),
   ## check if this suitability data is the same   
   ## https://www.nature.com/articles/s41597-022-01632-8#Fun 
 
+
 #   ## SI < 10
-# (plt_animalprot_in_croplands_where_SI_below10<- 
+
+
+# (plt_animalprot_in_croplands_where_SI_below10<-
 #     create_index_map_no_cntry(r_index = r_animal_protein_mt_in_croplands_SI_below10,
 #                      tocrs = "ESRI:54030",
 #                      index_main_title = "Animal protein production on crop production areas where crop suitability < 10",
@@ -509,24 +754,48 @@ pal_light <- c(pal_light %>% first(1),
                                   "> 50"))) 
 
 
+
+# fig2 <- tmap_arrange(
+#   plt_agb_5y,
+#   plt_agb_iv,
+#   plt_agb_cv,
+#   plt_fcr_on_average,
+#   ncol = 2)
+# 
+# fig2
+# 
+# tmap_save(fig2, 
+#           here("Figures", "AGB AGB_IV AGB CV FCR_average.pdf"),
+#           width = 180, height = 150, units = "mm")
 ```
 
-Gather plots from different chuncks
 
-# Plot AGB, AGB IV, AGB CV and FCR_average -- figure 2?
+# Plot shares of pixel covered by croplands (cl) and grazing lands (gl) and sum of those
+
+! add also fraction where land is very suitable? Or where it is not suitable at all? Or this to somewhere else?
 
 ```{r}
-fig2 <- tmap_arrange(
-  plt_agb_5y,
-  plt_agb_iv,
-  plt_agb_cv,
-  plt_fcr_on_average,
-  ncol = 2)
+# gather data
+r_fractions_gl_cl_total <- 
+  c(r_grazingland_fraction, r_fraction_of_crops_in_cell, fraction_total)
+names(r_fractions_gl_cl_total) <- c("fraction_gl", "fraction_cp", "fraction_total")
+plot(r_fractions_gl_cl_total)
+pal_fraction<-  scico(n = 10, palette = "hawaii", begin = 0.1, end = 0.8)
 
-fig2
+(plt_fractions <- 
+      create_index_map(r_index = 100*r_fractions_gl_cl_total,
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Share of land area used for different agricultural practises",
+                     index_label = "%",
+                     colorpal = pal_fraction,
+                     breakvals = seq(0, 100, 10),
+                     breaknames = c("0-10", "10-20", "20-30", "30-40", "40-50",
+                                    "50-60", "60-70", "70-80", "80-90", "90-100"))) 
+# sequence <- seq(0, 100, 10)
+# class_labels <- paste0(sequence, "-", sequence + 10)
+# class_labels <- class_labels[-length(class_labels)]
 
-tmap_save(fig2, 
-          here("Figures", "AGB AGB_IV AGB CV FCR_average.pdf"),
-          width = 180, height = 150, units = "mm")
+
 ```
+
 

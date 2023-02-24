@@ -1,0 +1,427 @@
+
+Protein production capacity from aboveground biomass (AGB)
+
+! Change names inside function so that they are not same as global names
+! 
+
+# hankkiudu eroon errorista
+
+```{r}
+plot(cntry_raster) # Error in x$.self$finalize() : attempt to apply non-function
+cntry_raster
+```
+
+# Calculate protein to energy conversion using FAOSTAT statistics
+
+```{r}
+# ---------------------------------------------------------- FAOSTAT download 
+foodBalanceSheets_semiraw <-
+  here("Data", "Input", "faostat", "foodBalanceSheets_E_All_Data_NOFLAG.csv") %>% 
+  read.csv() %>% 
+  dplyr::select(-Element.Code,-Unit ,-c(Y2011:Y2019))
+
+
+my_elementlist_fao <- c(
+  "Production","Food supply quantity (kg/capita/yr)",
+  "Food supply (kcal/capita/day)", "Protein supply quantity (g/capita/day)"
+)
+
+my_itemlist_fao_animals <- c("Meat", "Bovine Meat", "Mutton & Goat Meat")
+
+
+
+
+
+# ---------------------------------------- FAOSTAT animal protein to kcal
+fbs_animals <- foodBalanceSheets_semiraw %>% 
+  filter(Item %in% my_itemlist_fao_animals,
+         Element %in% my_elementlist_fao) 
+
+
+ ## pivot wider
+fbs_animals_wide <- fbs_animals %>% 
+  pivot_wider(names_from = Element, values_from = Y2010) %>% 
+  rename(prod_1000mt = "Production", # eg numbers in FIN equals Lukestat
+         supply.KgCapYr = "Food supply quantity (kg/capita/yr)",
+         supply.KcalCapD = "Food supply (kcal/capita/day)",
+         prot.gCapD = "Protein supply quantity (g/capita/day)") %>% 
+  
+  
+  ## how many kcal do we get from amount of meat containing one kg of protein - required for simple conversion from protein production to energy production
+  ## create variable protein to kcal 
+  mutate(one_kg_prot_to_kcal =  (supply.KcalCapD / prot.gCapD) * 1000,
+         protein_fraction = (prot.gCapD*365/1000) / supply.KgCapYr) %>% # protein fraction for meat products -- not even needed
+  dplyr::select(-Item.Code) %>% 
+  
+  
+  mutate_all(function(x) ifelse(is.nan(x) | is.infinite(x), NA, x))  # convert NaN values to NA
+
+
+
+
+
+
+# fill empty columns (values 0 or NA) with global averages similardly as done earlier with crops
+  ## ex with Bovine meat. First, find global average for one_kg_prot_to_kcal
+# one_kg_prot_to_kcal_bovine <- fbs_animals_wide %>% 
+#   filter(Item == "Bovine Meat", Area == "World") %>%
+#   pull(one_kg_prot_to_kcal)
+# 
+#   ## then replace 0 or NA values with this value
+# test_bovine  <- fbs_animals_wide %>% 
+#   filter(Item == "Bovine Meat") %>% 
+#   mutate(one_kg_prot_to_kcal = 
+#            ifelse(is.na(one_kg_prot_to_kcal) | one_kg_prot_to_kcal == 0 , # if one_kg_prot_to_kcal fraction = NA or 0,
+#                                    one_kg_prot_to_kcal_bovine, # fill with the global average value
+#                                    one_kg_prot_to_kcal))  # otherwise let it just be
+
+
+
+
+# do this with function for all meat items and fill also protein_fraction col if that's needed later
+f_fill_missing_nutritient_values_animals<- function(animalcategory) {
+
+   ## pull one_kg_prot_to_kcal for spesific animal species
+  one_kg_prot_to_kcal_animalcategory <- fbs_animals_wide %>% 
+  filter(Item == animalcategory, Area == "World") %>%
+  pull(one_kg_prot_to_kcal)
+  
+  ## pull protein fraction for spesific crop
+  protein_fraction_animalcategory <- fbs_animals_wide %>% 
+  filter(Item == animalcategory, Area == "World") %>%
+  pull(protein_fraction)
+  
+  
+  ## fill empty one_kg_prot_to_kcal amd protein_fraction  with global averages
+  fbs_animals_wide_filled <- fbs_animals_wide %>% 
+    filter(Item == animalcategory) %>%
+    
+    
+    ## fill one_kg_prot_to_kcal column
+    mutate(one_kg_prot_to_kcal = 
+           ifelse(is.na(one_kg_prot_to_kcal) | one_kg_prot_to_kcal == 0 , # if protein fraction = NA or 0,
+                                   one_kg_prot_to_kcal_animalcategory, # fill with the global average value
+                                   one_kg_prot_to_kcal)) %>% # otherwise let it just be    
+    
+    ## fill protein_fraction column
+    mutate(protein_fraction = 
+           ifelse(is.na(protein_fraction) | protein_fraction == 0 , 
+                                   protein_fraction_animalcategory,
+                                   protein_fraction)) 
+  
+
+  return(fbs_animals_wide_filled)
+}
+
+
+
+
+
+# Lapply this for all the animal species  --> returns a list
+fbs_animals_wide_filled_list <- 
+  lapply(my_itemlist_fao_animals, 
+         f_fill_missing_nutritient_values_animals) 
+
+# next we use bind_rows to make this reasonable looking dataframe
+fbs_animals_wide_filled <- bind_rows(fbs_animals_wide_filled_list)  
+
+```
+
+
+# Aboveground biomass (AGB) om HYDE grazing lands and Feed Conversion Ratios (FCR)  
+
+! add explanation to text that missing values have been filled with global average values
+
+
+```{r}
+# ---------------------------------------------- find HYDE grazing land fraction
+r_fraction_gl <- 
+  here("Data", "Input", "from_harddrive", 
+       "fraction_of_cell_that_is_hyde_grazingland.tif") %>%  
+  rast() 
+plot(r_fraction_gl, main = "fraction of HYDE grazing lands")
+
+
+
+# AGB in HYDE areas
+r_simulated_agb_vars <- #actually also from hard drive originally
+  here("Data", "Intermediate_input", "simulated_agb5v_agbIV_agbCV.tif") %>% 
+  rast()
+r_agb_hydeareas_kg_km2 <- r_simulated_agb_vars$agb_med_median
+plot(r_agb_hydeareas_kg_km2)
+
+
+ ## AGB per pixel without any cropland mask. present result kg km2 but this is for global sums
+r_agb_kg_perpix <-
+  r_agb_hydeareas_kg_km2 * 
+  cellSize(r_agb_hydeareas_kg_km2, unit = "km") * 
+  r_fraction_gl
+
+
+
+
+
+
+#------------------------------------------------ FCR created in livestock_fcr.R
+# Next we convert AGB to protein using FCR values of Mekonnen et al and Herrero et al
+fcr_complete <-
+  read.csv(here("Vilma_fcr_repo", "livestock_fcr_repo", "Outputs",
+                "fcr_grazing_by_animalspecies_bycountry_HerreroMekonnen.csv")) %>% 
+  as_tibble()
+
+
+  ## combine with fao geometries and select production system = Grazing, and drop SG milk
+adm_10m_fao_id_simple_combined_with_fcr <-
+  fcr_complete %>%
+  filter(prod_sys_2 == "Grazing", Animal.category != "Sg milk") %>%
+ # left_join(adm_10m_fao_id_simple, ., by = c("FAO_ID" = "Area.Code"))
+  left_join(adm10_simple_faoadded, ., 
+             by = c("SOVEREIGNT" = "AreaName")) 
+            #  by = c("FAO_ID" = "Area.Code")) # no South Sudan in fcr_complete
+
+
+
+#------------------ Create FCR raster for spesific Animal.Category with function
+f_FCR_raster <- function(animalcategory) {
+  
+  ## create reclassification matrix
+  rcl_mat_countries_to_fcr <-
+  adm_10m_fao_id_simple_combined_with_fcr %>% 
+  filter(Animal.category == animalcategory) %>% 
+  dplyr::select(FAO_ID, FCR_uniform_median) %>% # was FCR_truncated_median
+  st_drop_geometry() %>% 
+  as.matrix(., ncol = 2)
+
+
+  ## classify. Creates a raster that shows FCR for different countries
+  r_fcr_in_f  <- cntry_raster %>% # in_f refers that in function -- not global var
+    classify(rcl_mat_countries_to_fcr, 
+             others = 
+               fcr_complete %>% filter(Animal.category == animalcategory) %>% 
+               pull(FCR_uniform_median) %>% mean()) # fill others with mean value
+  
+  names(r_fcr_in_f) <- paste0(animalcategory, "_FCR")
+
+return(r_fcr_in_f)
+}
+
+
+# f_FCR_raster("Dairy cattle") # test
+
+
+# create average FCR raster based on mean of simulated FCRs of beef, cattle and sheepgoats
+# fcr_average <-
+# mean(
+#   f_FCR_raster("Dairy cattle"),
+#   f_FCR_raster("Beef cattle"),
+#   f_FCR_raster("Sg meat")
+# ) 
+# names(fcr_average) <- "fcr_average"
+
+ ## create fcr raster
+r_fcr <- c(
+  f_FCR_raster("Dairy cattle"),
+  f_FCR_raster("Beef cattle"),
+  f_FCR_raster("Sg meat")
+ # fcr_average
+)
+names(r_fcr) <- c("fcr_dairy", "fcr_beef", "fcr_sheep_and_goat_meat")
+
+qtm(r_fcr$fcr_dairy)
+```
+
+
+
+# Convert AGB in HYDE grazing lands to protein
+
+Calculate how much protein and kcal HYDE grazing lands can produce from AGB. Amount of produced protein is different for different animal species
+
+
+
+
+
+```{r}
+# ------------------------------------------------ protein from AGB per ha
+r_protein_from_AGB_kg_ha <-
+  (r_agb_hydeareas_kg_km2/100) / r_fcr # div by 10o to convert per km2 to per ha
+
+names(r_protein_from_AGB_kg_ha) <- c("dairy", "beef", "sheep_and_goats") #, "average"
+
+plot(r_protein_from_AGB_kg_ha) # sheep and goats missing from this
+```
+
+
+# Convert protein production to kcal
+AGB converted to protein above. Now we convert protein to kcal for all different animal species
+
+
+```{r}
+# kcal production raster, example with dairy cows
+faoid_and_kcals_dairy  <- 
+  fbs_animals_wide_filled %>%
+  filter(Item == "Bovine Meat") %>%
+  dplyr::select(Area.Code, one_kg_prot_to_kcal)
+
+## create reclassification matrix
+rcl_mat_countries_to_one_kg_prot_to_kcal <-
+  matrix(c(
+    faoid_and_kcals_dairy$Area.Code,
+    faoid_and_kcals_dairy$one_kg_prot_to_kcal),
+    ncol = 2)
+
+
+## create raster where fao id has been replaced with one_kg_prot_to_kcal
+r_one_kg_prot_to_kcal_dairy  <- 
+  cntry_raster %>% 
+  classify(rcl_mat_countries_to_one_kg_prot_to_kcal, 
+           others = (fbs_animals_wide_filled %>%
+                       filter(Area == "World", Item == "Bovine Meat") %>% pull(one_kg_prot_to_kcal))
+             ) # use global averages for missing countries
+
+plot(r_one_kg_prot_to_kcal_dairy, main = "one_kg_prot_to_kcal_dairy by country")
+
+
+## multiply with protein production raster
+plot((r_one_kg_prot_to_kcal_dairy * r_protein_from_AGB_kg_ha$dairy /1e6),
+     main = "Amount of kcal dairy cattle could produce from AGB (MM kcal per ha)")
+
+
+
+
+
+
+
+
+# ------------------------ the same for different animal species with a function
+f_energy_from_protein_MMkcal_ha <- function(animalcategory_fao, animalcategory_FCR) {
+
+  ## get protein fraction for spesific crop species
+  faoid_and_one_kg_prot_to_kcal <-
+    fbs_animals_wide_filled %>%
+    filter(Item == animalcategory_fao) %>%
+    dplyr::select(Area.Code, one_kg_prot_to_kcal)
+
+  ## reclassification matrix
+  rcl_mat_countries_to_one_kg_prot_to_kcal <-
+    matrix(c(
+      faoid_and_one_kg_prot_to_kcal$Area.Code,
+      faoid_and_one_kg_prot_to_kcal$one_kg_prot_to_kcal),
+      ncol = 2)
+
+  ## classify. Creates a raster that shows one_kg_to_prot for each country
+  r_one_kg_prot_to_kcal  <- 
+    cntry_raster %>% 
+    classify(rcl_mat_countries_to_one_kg_prot_to_kcal, 
+             others = 
+               (fbs_animals_wide_filled %>%
+                       filter(Area == "World", Item == animalcategory_fao) %>% 
+                  pull(one_kg_prot_to_kcal))) # fill empty values with global averages
+  
+  
+  # protein production raster (first chunck)
+  r_protein_production_animals <-
+    subset(r_protein_from_AGB_kg_ha, animalcategory_FCR) 
+  
+
+  ## kcal production raster
+  r_kcal_MM <-
+    r_protein_production_animals* r_one_kg_prot_to_kcal / 1e6
+  names(r_kcal_MM) <- paste0(animalcategory_FCR, "_MMkcal_ha")
+
+  return(r_kcal_MM) # MM per pix or per ha?
+}
+
+
+f_energy_from_protein_MMkcal_ha(animalcategory_fao = "Bovine Meat",
+                          animalcategory_FCR = "dairy") %>% 
+  plot(., main = "Amount of kcal dairy cows could produce from AGB (MM kcal per ha)")
+
+
+
+
+# Derive energy production raster for all animal species
+r_kcal_animals_MM_ha <- c(
+  f_energy_from_protein_MMkcal_ha(animalcategory_fao = "Bovine Meat",
+                                  animalcategory_FCR = "dairy"), #
+  
+  f_energy_from_protein_MMkcal_ha(animalcategory_fao = "Bovine Meat",
+                                  animalcategory_FCR = "beef"),
+  
+  f_energy_from_protein_MMkcal_ha(animalcategory_fao = "Mutton & Goat Meat",
+                                  animalcategory_FCR = "sheep_and_goats") #,
+  
+  # f_energy_from_protein_MMkcal_ha(animalcategory_fao = "Meat",
+  #                                 animalcategory_FCR = "average")  
+)
+
+
+plot(r_kcal_animals_MM_ha)
+```
+
+
+# Calculate global sums
+Convert per ha values to perpix
+
+! check the values
+
+```{r}
+# Total protein produced
+r_protein_from_AGB_kg_perpix <-
+  r_protein_from_AGB_kg_ha * cellSize(r_protein_from_AGB_kg_ha, unit = "ha") * 
+  r_fraction_gl
+global(r_protein_from_AGB_kg_perpix, fun = "sum", na.rm = T)/1e9 # dairy 49 mmt, beef and sheep 11 mmt
+
+  ## outliers removed
+f_global_sum_without_outliers(r_protein_from_AGB_kg_perpix$dairy) /1e9 # 41 dairy
+f_global_sum_without_outliers(r_protein_from_AGB_kg_perpix$beef) /1e9 # 9 beef
+f_global_sum_without_outliers(r_protein_from_AGB_kg_perpix$sheep_and_goats) /1e9 # 9 sheep_and_goats
+
+# trimmed_value_proteinAGB <-
+#   quantile(values(r_protein_from_AGB_kg_perpix), 0.99, na.rm = T)
+# r_protein_from_AGB_kg_perpix_trim <- r_protein_from_AGB_kg_perpix
+# r_protein_from_AGB_kg_perpix_trim[r_protein_from_AGB_kg_perpix_trim > trimmed_value_proteinAGB] <- NA
+# global(r_protein_from_AGB_kg_perpix_trim, fun = "sum", na.rm = T)/1e9 # dairy 35 mmt, beef and sheep 11 mmt --> !!!! should be different quantiles for diff layers! --- update with function
+
+
+
+# total kcal production
+r_kcal_animals_MM_perpix <- 
+  r_kcal_animals_MM_ha * cellSize(r_kcal_animals_MM_ha, unit ="ha") *
+  r_fraction_gl
+global(r_kcal_animals_MM_perpix*1e6, fun = "sum", na.rm = T)/1e12 # dairy 505 trillion kcal
+
+  ## outliers removed
+f_global_sum_without_outliers(r_kcal_animals_MM_perpix$dairy_MMkcal_ha) /1e6 # 440 dairy
+f_global_sum_without_outliers(r_kcal_animals_MM_perpix$beef_MMkcal_ha) /1e6 # 100 beef
+f_global_sum_without_outliers(r_kcal_animals_MM_perpix$sheep_and_goats_MMkcal_ha) /1e6 # 151 sheep_and_goats
+
+
+
+
+
+# livestock protein masked to cropland areas 
+r_protein_from_AGB_kg_perpix_masked_to_croplands <-
+  mask(r_protein_from_AGB_kg_perpix, r_physical_areas_crops_sum_ha_perpix)
+f_global_sum_without_outliers(r_protein_from_AGB_kg_perpix_masked_to_croplands$dairy) /1e9 # 26 dairy
+f_global_sum_without_outliers(r_protein_from_AGB_kg_perpix_masked_to_croplands$beef) /1e9 # 6 beef
+f_global_sum_without_outliers(r_protein_from_AGB_kg_perpix_masked_to_croplands$sheep_and_goats) /1e9 # 6 sheep and goats
+
+
+
+# livestock protein masked to unsuitable areas in hyde_suitabilities.Rmd
+r_protein_from_AGB_kg_perpix_masked_to_croplands_where_SIbelow10 <-
+  mask(r_protein_from_AGB_kg_perpix, SI_5arcmin_below10_croplandmask)
+f_global_sum_without_outliers(r_protein_from_AGB_kg_perpix_masked_to_croplands_where_SIbelow10$dairy) /1e9 # 1.4 dairy
+f_global_sum_without_outliers(r_protein_from_AGB_kg_perpix_masked_to_croplands_where_SIbelow10$beef) /1e9 # 0.3 beef
+f_global_sum_without_outliers(r_protein_from_AGB_kg_perpix_masked_to_croplands_where_SIbelow10$sheep_and_goats) /1e9 # 0.4 sheep and goats
+```
+
+
+
+
+
+
+
+
+
+

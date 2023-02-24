@@ -1,0 +1,569 @@
+---
+title: "HYDE and MapSPAM protein"
+author: "Johannes Piipponen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+! Change names inside function so that they are not same as global names
+
+
+
+
+# hankkiudu eroon errorista
+
+```{r}
+plot(cntry_raster) # Error in x$.self$finalize() : attempt to apply non-function
+cntry_raster
+
+```
+
+
+Calculate protein and kcal fof grazing livestock and crops on existing production areas.
+- use HYDE grazing lands
+
+# Crops - FAO data processing
+- Select crops, calculate protein fraction and kcalPerKg for each crop and country
+
+
+```{r}
+# ---------------------------------------------------------- FAOSTAT download 
+  ## no need to update the data if we use only yr 2010?
+foodBalanceSheets_semiraw <-
+  here("Data", "Input", "faostat", "foodBalanceSheets_E_All_Data_NOFLAG.csv") %>% 
+  read.csv() %>% 
+  dplyr::select(-Element.Code,-Unit ,-c(Y2011:Y2019)) 
+
+
+# ---------------------------------------------------------- crops
+my_itemlist_fao <- c(  # in mapspam webpage order
+  "Wheat and products", "Rice and products","Maize and products",
+  "Barley and products", "Millet and products", "Sorghum and products",
+  "Cereals, Other", "Potatoes and products", "Sweet potatoes",
+  "Yams", "Cassava and products", "Roots, Other",  
+  "Beans", "Peas", "Pulses, Other and products",
+  "Soyabeans","Groundnuts", "Coconuts - Incl Copra",
+  "Bananas", "Plantains",  "Vegetables" # 21 crops -- no fruits!
+)
+
+my_elementlist_fao <- c(
+  "Production","Food supply quantity (kg/capita/yr)",
+  "Food supply (kcal/capita/day)", "Protein supply quantity (g/capita/day)"
+)
+
+
+  ## filter
+fbs_crops <- foodBalanceSheets_semiraw  %>% 
+  filter(Item %in% my_itemlist_fao,
+       Element %in% my_elementlist_fao)
+
+
+
+ ## to wide format. Select only relevant variables
+fbs_crops_wide <- fbs_crops %>% 
+  pivot_wider(names_from = Element, values_from = Y2010) %>% 
+  rename(prod_1000mt = "Production",
+         supply.KgCapYr = "Food supply quantity (kg/capita/yr)",
+         supply.KcalCapD = "Food supply (kcal/capita/day)",
+         prot.gCapD = "Protein supply quantity (g/capita/day)") 
+
+  ## add column where item names corresponds to mapsmap names
+fbs_crops_wide <- fbs_crops_wide %>% 
+  mutate(spamname = case_when(
+    Item == "Wheat and products" ~ "WHEA",
+    Item == "Rice and products"  ~ "RICE",
+    Item == "Barley and products" ~ "BARL",
+    Item == "Maize and products" ~ "MAIZ",
+    Item == "Millet and products"  ~ "PMIL", # not all of the millets in this
+    Item == "Sorghum and products"  ~ "SORG",
+    Item == "Cereals, Other"   ~ "OCER",
+    Item == "Cassava and products"   ~ "CASS",
+    Item == "Potatoes and products" ~ "POTA",
+    Item == "Sweet potatoes"  ~ "SWPO",
+    Item == "Roots, Other"  ~ "ORTS",
+    Item == "Beans"  ~ "BEAN",
+    Item == "Peas"  ~ "CHIC", # not all peas in this
+    Item == "Pulses, Other and products"  ~ "OPUL", # not all pulses in this
+    Item == "Soyabeans"  ~ "SOYB",
+    Item == "Groundnuts"   ~ "GROU",
+    Item == "Coconuts - Incl Copra"  ~ "CNUT",
+    Item == "Vegetables"  ~ "VEGE",
+    Item == "Bananas"  ~ "BANA",
+    Item == "Plantains"  ~ "PLNT",
+    Item == "Yams"  ~ "YAMS"
+  ))
+
+
+mylist_spamnames <- c(
+  "WHEA", "RICE", "BARL", "MAIZ", "PMIL",
+  "SORG", "OCER", "CASS", "POTA", "SWPO",
+  "ORTS", "BEAN", "CHIC", "OPUL", "SOYB",
+  "GROU", "CNUT", "VEGE", "BANA", "PLNT",
+  "YAMS") # 21 --- not sure if this is needed
+
+
+
+
+# ------------------------- Calculate fraction of protein and kcal in a product (conversion factor) 
+  ## protein and kcal
+fbs_crops_wide <- fbs_crops_wide %>% 
+  mutate(protein_fraction = (prot.gCapD * 365 / 1000) / supply.KgCapYr,
+         kcalPerKg = (supply.KcalCapD * 365)/ supply.KgCapYr)  %>% 
+  
+  ## remove cases where supply = 0 (cases that yield NA values)  
+  ## # also converts NaN to NA
+  mutate_all(function(x) ifelse(is.nan(x) | is.infinite(x), NA, x)) 
+
+
+
+
+# ---------------------------------------------------------- Fill empty rows
+# Fill empty protein_fraction and kcalPerKg rows with global average values
+  ## example for soy
+# prot_frac_soy <- fbs_crops_wide %>% 
+#   filter(spamname == "SOYB", Area == "World") %>%
+#   pull(protein_fraction)
+# 
+# test_soy  <- fbs_crops_wide %>% 
+#   filter(spamname == "SOYB") %>% 
+#   mutate(protein_fraction = 
+#            ifelse(is.na(protein_fraction) | protein_fraction == 0 , # if protein fraction = NA or 0,
+#                                    prot_frac_soy, # fill with the global average value
+#                                    protein_fraction))  # otherwise let it just be
+
+
+# Create a function that fills empty values of cols protein_fraction and kcalPerKg
+f_fill_missing_nutritient_values_crops <- function(cropname_mapspam) {
+  
+  ## pull protein fraction for spesific crop
+  protein_fraction_spamcrop <- fbs_crops_wide %>% 
+  filter(spamname == cropname_mapspam, Area == "World") %>%
+  pull(protein_fraction)
+  
+  
+  ## pull KcalPerKg for spesific crop
+  KcalPerKg_spamcrop <- fbs_crops_wide %>% 
+  filter(spamname == cropname_mapspam, Area == "World") %>%
+  pull(kcalPerKg)
+  
+  
+  ## fill empty protein fraction and kcalPerKg with global averages
+  fbs_crops_wide_filled <- fbs_crops_wide %>% 
+    filter(spamname == cropname_mapspam) %>%
+    ## fill protein_fraction column
+    mutate(protein_fraction = 
+           ifelse(is.na(protein_fraction) | protein_fraction == 0 , # if protein fraction = NA or 0,
+                                   protein_fraction_spamcrop, # fill with the global average value
+                                   protein_fraction)) %>% # otherwise let it just be
+    
+    ## fill KcalPerKg column
+    mutate(kcalPerKg = 
+             ifelse(is.na(kcalPerKg) | kcalPerKg == 0 , 
+                    KcalPerKg_spamcrop,
+                    kcalPerKg)) 
+  
+  return(fbs_crops_wide_filled)
+  }
+
+
+
+test1 <- f_fill_missing_nutritient_values_crops("SOYB") # returns a df
+
+# Lapply this for all the crops --> returns a list
+fbs_crops_wide_filled_list <- 
+  lapply(mylist_spamnames, f_fill_missing_nutritient_values_crops) 
+
+
+
+
+# next we use bind_rows to make this reasonable looking dataframe
+fbs_crops_wide_filled <- bind_rows(fbs_crops_wide_filled_list)
+
+
+
+```
+
+
+# Physical areas for crops 
+
+- needed to calculate fraction of cell covered by crops
+- according to the MapSPAM publication:
+"PHYSICAL AREA: it is measured in hectares and represents the actual area where a crop is grown, not counting how often production was harvested from it. Physical area is calculated for each production system and crop, and the sum of all physical areas of the four production systems constitutes the total physical area for that crop. The sum of the physical areas of all crops in a pixel may not be larger than the pixel size."
+
+
+```{r}
+#---------------------------------- get physical areas for spam crops 
+  ## (in ha originally)
+f_physical_area_crops_ha_perpix <- function(cropname_mapspam) {
+  list.files(path = here("Data", "Input", "mapspam", "physical_area") ,
+           pattern = paste0("_", cropname_mapspam, "_A"), 
+           full.names = TRUE)  %>%  
+  rast()
+}
+f_physical_area_crops_ha_perpix("WHEA") 
+
+  ## get physical areas for all of the spam crops
+r_physical_areas_ha_perpix <- 
+  lapply(mylist_spamnames, f_physical_area_crops_ha_perpix) %>% 
+  rast()# 21
+names(r_physical_areas_ha_perpix) <- mylist_spamnames
+
+  ## ex plot
+#plot(r_physical_areas_ha_perpix$WHEA) 
+
+
+
+  ## sum of these areas, read as "area of crop species in cell combined in km2"
+r_physical_areas_crops_sum_ha_perpix <- sum(r_physical_areas_ha_perpix, na.rm = T) # areas per grid cell. e.g in India lot of area covered by some crops
+plot(r_physical_areas_crops_sum_ha_perpix, main = "physical areas of 21 crops (A production, ha per pix)")
+global(r_physical_areas_crops_sum_ha_perpix, fun = "sum", na.rm = T)/1e6 # 9 milj km2 total --> close to
+# https://www.statista.com/statistics/201774/projection-for-total-global-cropland-area-from-2010/
+# , which estimates it was 859 million ha in 2010 ( = 8.6 milj km2)
+
+
+
+
+# fraction of crops in 5arcmin cell
+r_fraction_cl <-
+  r_physical_areas_crops_sum_ha_perpix / 
+  cellSize(r_physical_areas_crops_sum_ha_perpix, unit = "ha")
+names(r_fraction_cl) <- "fraction_crops"
+
+# plot. e.g in India a large share of land area is cultivated for crops 
+plot(r_fraction_cl, main = "fraction of 21 crops in 5arcmin cells") ##!!  proper plot in supplementary
+
+```
+
+
+
+
+
+
+
+# Convert SPAM crop production to protein and kcal
+
+- according to the MapSPAM publication:
+"PRODUCTION: for each production system and crop, production is calculated by multiplying area harvested by its corresponding yield. It is measured in metric tons. The total production of a crop includes the production of all production systems of that crop."
+
+
+```{r}
+  ## get the pdoruction data for all 21 crops with function
+f_global_prod_crops_mt <- function(cropname_mapspam) {
+  list.files(path = here("Data", "Input", "mapspam", "global_prod") ,
+             pattern = paste0("P_", cropname_mapspam, "_A"),
+             full.names = TRUE)  %>%
+    rast()
+}
+
+f_global_prod_crops_mt("WHEA") # returns raster, unit = mt per pixel (tons per pix)
+
+
+  ## 21 global production rasters in same stack 
+r_global_prod_crops_mt<- lapply(mylist_spamnames, f_global_prod_crops_mt) %>%
+  rast()# 21 -- not all millets there for example
+# global(r_global_prod_crops_mt, fun = "sum", na.rm = T)/1e6 # global wheat yield seems to be correct, around 675 Mt
+names(r_global_prod_crops_mt) <- mylist_spamnames
+
+
+ ##  sum: how much prot in cell total ! Double check from methodology that it is perpixel
+r_global_production_crops_sum_mt <- sum(r_global_prod_crops_mt, na.rm = T)
+
+
+
+
+
+
+
+#------------------------------------------------------- crop protein production
+  ## create a function to convert crop production to protein
+f_crop_protein_production_mt_perpix <- function(cropname_mapspam) {
+  
+  ## get protein fraction for spesific crop species
+  faoid_and_prot_frac <-
+    fbs_crops_wide_filled %>%
+    filter(spamname == cropname_mapspam) %>%
+    dplyr::select(Area.Code, protein_fraction)
+  
+  ## reclassification matrix
+  rcl_mat_countries_to_prot_frac <-
+    matrix(c(
+      faoid_and_prot_frac$Area.Code,
+      faoid_and_prot_frac$protein_fraction),
+      ncol = 2)
+  
+  ## classify. Creates a raster that shows protein fraction for each country
+  r_fraction_prot  <- 
+    cntry_raster %>% 
+    classify(rcl_mat_countries_to_prot_frac, others = NA)
+  
+  
+  # production raster  
+  r_production_crop <-
+    subset(r_global_prod_crops_mt, cropname_mapspam) 
+  
+  
+  ## protein production raster
+  r_prot <-
+    r_production_crop* r_fraction_prot
+  names(r_prot) <- paste0(cropname_mapspam, "_prot")
+  
+  return(r_prot)
+}
+
+f_crop_protein_production_mt_perpix("SOYB") 
+
+
+
+
+################### lapply for all items -- 15sec
+
+r_prot_allcrops_mt_perpix <- lapply(mylist_spamnames,
+                          f_crop_protein_production_mt_perpix) %>% 
+  rast() 
+
+
+ ##  sum: how much prot in cell total 
+r_prot_allcrops_sum_mt_perpix <- sum(r_prot_allcrops_mt_perpix, na.rm = T)
+
+ ## resample to get complete ext and 0 0 origin
+r_prot_allcrops_sum_mt_perpix <- 
+  resample(r_prot_allcrops_sum_mt_perpix, template_rast_5arcmin) 
+
+plot(r_prot_allcrops_sum_mt_perpix, 
+     main = "21 crops sum of protein mt") # 3rd Qu = 314
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#------------------------------------------------------- crop energy production
+# multiply production raster by kcalPerKg values (those now by country)
+f_crop_kcal_prod_MM_perpix <- function(cropname_mapspam) {
+
+  ## get protein fraction for spesific crop species
+  faoid_and_kcalPerKg <-
+    fbs_crops_wide_filled %>%
+    filter(spamname == cropname_mapspam) %>%
+    dplyr::select(Area.Code, kcalPerKg)
+
+  ## reclassification matrix
+  rcl_mat_countries_to_kcalPerKg <-
+    matrix(c(faoid_and_kcalPerKg$Area.Code, 
+             faoid_and_kcalPerKg$kcalPerKg),
+           ncol = 2)
+
+  ## classify. Creates a raster with kcalPerKg for spesific crop
+  r_kcalPerKg  <- cntry_raster %>%
+    classify(rcl_mat_countries_to_kcalPerKg, others = NA)
+
+  
+    # production raster
+  r_production_crop <-
+    subset(r_global_prod_crops_mt, cropname_mapspam) 
+  
+  
+  ## kcal production raster --- check
+  r_kcal <-
+    # divide as production unit = mt and our desired unit = million
+    (r_production_crop * 1000)/1e6 * r_kcalPerKg
+  names(r_kcal) <- paste0(cropname_mapspam, "_MMkcal")
+
+  return(r_kcal)
+}
+
+
+
+# lapply for all crops
+r_kcal_allcrops_MM_perpix <- lapply(mylist_spamnames,
+                             f_crop_kcal_prod_MM_perpix) %>%
+  rast()
+
+
+  ##  sum: how much kcal (in million kcal) in cell total
+r_kcal_allcrops_sum_MM_perpix <- sum(r_kcal_allcrops_MM_perpix, na.rm = T)
+plot(r_kcal_allcrops_sum_MM_perpix, range = c(0, 15000),
+     main = "21 crops sum of kcal MM") 
+
+
+
+
+
+
+
+
+
+# Print total production and protein & kcal production to tibble 
+tot_sums_cropspecies <- data.frame(
+  crop = mylist_spamnames,
+  production_Mt = global(r_global_prod_crops_mt, fun = "sum", na.rm = T)/1e6 ,
+  protein_Mt = global(r_prot_allcrops_mt_perpix, fun = "sum", na.rm = T)/1e6,
+  kcal_MM = global(r_kcal_allcrops_MM_perpix, fun = "sum", na.rm = T)/1e6
+)
+names(tot_sums_cropspecies) <- c("crop", "prod_Mt", "protein_Mt", "kcal_MM")
+ # check prod of rice
+
+# Combine production statistics from FAOSTAT
+tot_sums_cropspecies <- 
+  left_join(tot_sums_cropspecies,
+            (fbs_crops_wide_filled %>% 
+                    filter(Area == "World") %>% 
+                    mutate(prod_Mt_FAO = prod_1000mt/1000,
+                           prot_Mt_FAO = prod_Mt_FAO*protein_fraction,
+                           kcal_MM_FAO = prod_Mt_FAO * kcalPerKg/1000)) %>% 
+                   dplyr::select(Item, spamname, prod_Mt_FAO, prot_Mt_FAO, kcal_MM_FAO),
+  by = c("crop" = "spamname"))
+
+tot_sums_cropspecies <- tot_sums_cropspecies %>% 
+  mutate(across(where(is.numeric), round)) # !! large differences in soyabeans!
+
+
+# total sums -- production 4700 milliom tons, protein 400 Mt, energy 11 000 MM kcal 
+tot_sums_cropspecies %>% 
+  group_by() %>% 
+  summarise(sum_production_Mt = sum(prod_Mt),
+            sum_production_Mt_FAO = sum(prod_Mt_FAO), # productions (FAO & SPAM are close)
+            sum_protein_Mt = sum(protein_Mt), 
+            sum_protein_Mt_FAO = sum(prot_Mt_FAO),
+            sum_kcal_MM = sum(kcal_MM),
+            sum_kcal_MM_FAO = sum(kcal_MM_FAO)) 
+```
+
+
+
+
+# Convert outputs to kg/ha and calculate global sums
+--> note that kg/ha must include information about the fraction of cell that cl actually use! Cannot just divide by the cell area
+
+
+```{r}
+# crop production
+r_global_production_crops_sum_kg_ha <-
+  1000 * r_global_production_crops_sum_mt / 
+  (cellSize(r_global_production_crops_sum_mt, unit = "ha") * r_fraction_cl)
+summary(r_global_production_crops_sum_kg_ha)
+
+
+# crop protein production
+r_prot_allcrops_sum_kg_ha <- 
+  (1000 *r_prot_allcrops_sum_mt_perpix) / # convert tons to kg
+  (cellSize(r_prot_allcrops_sum_mt_perpix, unit = "ha") * r_fraction_cl)
+summary(r_prot_allcrops_sum_kg_ha) # median = 217 kg of protein
+
+# crop energy production 
+r_kcal_allcrops_sum_MM_ha <- 
+  r_kcal_allcrops_sum_MM_perpix / 
+  (cellSize(r_kcal_allcrops_sum_MM_perpix, unit = "ha") * r_fraction_cl)
+summary(r_kcal_allcrops_sum_MM_ha)  # med 7 mean 9
+hist(r_kcal_allcrops_sum_MM_ha, breaks = 100)
+
+
+
+
+# ------------------------------------------------------------------ global sums
+  ## total crop prodution areas
+global(r_physical_areas_crops_sum_ha_perpix, fun = "sum", na.rm = T)/1e6 # 904 million ha = 0.9 billion ha
+  ## total production
+global(r_global_production_crops_sum_mt, fun = "sum", na.rm = T)/1e6 # 4700 mmt
+  ## total protein production
+global(r_prot_allcrops_sum_mt_perpix, fun = "sum", na.rm = T)/1e6 # 267 mmt
+  ## total energy production
+global(r_kcal_allcrops_sum_MM_perpix*1e6, fun = "sum", na.rm = T)/1e12 # 9160 trillion kcal
+
+
+
+sum(tot_sums_cropspecies$protein_Mt) # 267 
+sum(tot_sums_cropspecies$prot_Mt_FAO) # 306 -- FAO global average based protein
+# see our world in data   https://ourworldindata.org/food-supply
+
+
+
+  ##  outliers removed 
+f_global_sum_without_outliers(r_prot_allcrops_sum_mt_perpix)/1e6 # 233 mmt
+f_global_sum_without_outliers(r_kcal_allcrops_sum_MM_perpix)/1e6 # 8032 trillion kcal
+
+
+# trimmed_value_r_prot_allcrops_sum_mt_perpix <-
+#   quantile(values(r_prot_allcrops_sum_mt_perpix), 0.99, na.rm = T)
+# r_prot_allcrops_sum_mt_perpix_trim <- r_prot_allcrops_sum_mt_perpix
+# r_prot_allcrops_sum_mt_perpix_trim[r_prot_allcrops_sum_mt_perpix_trim > trimmed_value_r_prot_allcrops_sum_mt_perpix] <- NA
+# global(r_prot_allcrops_sum_mt_perpix_trim, fun = "sum", na.rm = T)/1e6 # 233 mmt 
+
+```
+
+# test
+
+https://statdb.luke.fi/PxWeb/pxweb/fi/LUKE/LUKE__02%20Maatalous__04%20Tuotanto__14%20Satotilasto/01_Viljelykasvien_sato.px/table/tableViewLayout2/?rxid=dc711a9e-de6d-454b-82c2-74ff79a3a5e0 
+
+```{r}
+
+r_global_production_crops_sum_kg_ha %>% plot(., range = c(0,10000))
+r_global_production_crops_sum_kg_ha %>% hist(breaks= 100, xlim = c(0,10000)) # yields small, check finland
+
+
+
+# FINLAND
+  ## viljelyala vehnä
+f_physical_area_crops_ha_perpix("WHEA") %>%  # production area
+  crop_and_mask(., Finland_geom) %>% 
+  global(., fun = "sum", na.rm = T)/1000 # 225 (1000 ha) --- close to Luke values -- or actually 14 000 ha difference
+## sane as 
+r_physical_areas_ha_perpix$WHEA %>% 
+  crop_and_mask(., Finland_geom) %>% 
+  global(., fun = "sum", na.rm = T)/1000 # 225 (1000 ha) 
+
+
+  ## suomen kokonais vehnäsato
+vehnäsato_kg_perpix_fin <- 1000*r_global_prod_crops_mt$WHEA %>% 
+  crop_and_mask(., Finland_geom)
+global(vehnäsato_kg_perpix_fin, "sum", na.rm = T)/1e6 # 856 milj kg --> pitäis olla 724.4 ---- 131 milj kg ero
+
+
+
+
+########################################################### jatka täältä, joku väärin ------- tarvitaanko fraction vehnämaa suomi?
+  ## vehnä sato --- ensin muuta sato kg per ha
+
+vehnäsato_kg_ha_fin <- vehnäsato_kg_perpix_fin / cellSize(vehnäsato_kg_perpix_fin, unit = "ha")
+plot(vehnäsato_kg_ha_fin)
+
+wheat_yield_fin <- crop_and_mask(r_global_prod_crops_mt$WHEA, Finland_geom) 
+plot(wheat_yield_fin, main = "vehnän satotaso suomessa kg ha")
+hist(wheat_yield_fin, main = "vehnän satotaso ---- pieneltä näyttää") 
+# ohraa 1023 milj kg
+
+
+plot(cellSize(vehnäsato_kg_perpix_fin, unit = "ha"))
+
+
+
+
+
+#------------------------------------------------------------------ OHRA Suomi
+ ## viljelyala ohra
+r_physical_areas_ha_perpix$BARL %>% 
+  crop_and_mask(., Finland_geom) %>% 
+  global(., fun = "sum", na.rm = T)/1000 # 470 (1000 ha) --- Luken mukaan 417
+
+
+  ## kokonaissato ohra
+ohrasato_kg_perpix_fin <- 1000*r_global_prod_crops_mt$BARL %>% 
+  crop_and_mask(., Finland_geom)
+
+ohrasato_kg_perpix_fin2 <- 1000*f_global_prod_crops_mt("BARL") %>% 
+  crop_and_mask(., Finland_geom)
+
+ ## ohrasato hehtaareittain
+```
+
+
+
+

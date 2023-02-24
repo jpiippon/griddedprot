@@ -103,3 +103,22 @@ pal_shares <-  scico(n = 3, palette = "hawaii", begin = 0.1, end = 0.8)
 #           width = 180, height = 150, units = "mm")
 ```
 
+
+
+# Selected SPAM crops -Table S1
+
+```{r}
+#------------------------------------------------------ selected crops to data frame
+library(flextable)
+df_appendix_21crops <- tibble(
+  FAO_itemname = unique(fbs_crops_wide$Item),
+  SPAM_name = unique(fbs_crops_wide$spamname)
+) %>% 
+  flextable(., cwidth = 2)
+df_appendix_21crops
+
+save_as_image(df_appendix_21crops, path = here("Figures", "Supplementary", "selected_crops.png"))
+save_as_docx(df_appendix_21crops, path = here("Figures", "Supplementary", "selected_crops.docx"))
+
+
+```

@@ -1,12 +1,13 @@
 # Practicalities
 
 # !!!! numeroi scriptit lopuksi: missä järjestyksessä tulee ajaa
+# !!! kehittele funktio, joka laskee 99% quantilen kullekin layerille ja trimmaa rasteria sen mukaan
 
-if (!dir.exists("Data")){ dir.create("Data") } 
-if (!dir.exists("Figures")){ dir.create("Figures") } # modify and add to packages etc
-if (!dir.exists("Data/Input")){ dir.create("Data/Input") }
-if (!dir.exists("Data/Intermediate_input")){ dir.create("Data/Intermediate_input") }
-if (!dir.exists("Data/Output")){ dir.create("Data/Output") }
+# if (!dir.exists("Data")){ dir.create("Data") } 
+# if (!dir.exists("Figures")){ dir.create("Figures") } # modify and add to packages etc
+# if (!dir.exists("Data/Input")){ dir.create("Data/Input") }
+# if (!dir.exists("Data/Intermediate_input")){ dir.create("Data/Intermediate_input") }
+# if (!dir.exists("Data/Output")){ dir.create("Data/Output") }
 
 # Packages etc
 # install.packages('terra', repos='https://rspatial.r-universe.dev')
@@ -158,20 +159,26 @@ adm10_simple_faoadded_rob <-  adm10_simple_faoadded %>%
 
 
  ## regions
-reg <- here("Data", "Input", "reg_mollw.gpkg") |>  st_read()
-reg_rob <- st_transform(reg, crs = "ESRI:54030")
-reg_wgs <- st_transform(reg, crs = "EPSG:4326")
-reg_wgs_vect <- vect(as(reg_wgs, "Spatial"))
+# reg <- here("Data", "Input", "reg_mollw.gpkg") |>  st_read()
+# reg_rob <- st_transform(reg, crs = "ESRI:54030")
+# reg_wgs <- st_transform(reg, crs = "EPSG:4326")
+# reg_wgs_vect <- vect(as(reg_wgs, "Spatial"))
+# 
+# reg_rob <- reg_rob |> 
+#   mutate(subregion = c("Australia and Oceania", "Central America",
+#                        "East Asia", "Eastern Europe and Central Asia",
+#                        "Ice", "South Asia", "South America", "Middle East",
+#                        "Sub-Saharan Africa", "North Africa", "North America",
+#                        "Southeast Asia", "Western Europe")) #|>   filter(subregion != "Ice") # maybe not needed ## it is needed for figs
+# 
+# 
+# 
+# 
+# # simplify only for plotting
+# reg_rob_simple <- ms_simplify(reg_rob) # Remove ice or not?
+# st_write(reg_rob_simple, here("Data", "Intermediate_input", "reg_rob_simple.gpkg"))
 
-reg_rob <- reg_rob |> 
-  mutate(subregion = c("Australia and Oceania", "Central America",
-                       "East Asia", "Eastern Europe and Central Asia",
-                       "Ice", "South Asia", "South America", "Middle East",
-                       "Sub-Saharan Africa", "North Africa", "North America",
-                       "Southeast Asia", "Western Europe")) #|>   filter(subregion != "Ice") # maybe not needed ## it is needed for figs
-
-# simplify only for plotting
-reg_rob_simple <- ms_simplify(reg_rob) # Remove ice or not?
+reg_rob_simple <- here("Data", "Intermediate_input", "reg_rob_simple.gpkg") %>% st_read()
 
 
 ## function for cropping and maskin
@@ -249,3 +256,16 @@ create_index_map_no_cntry <- function(r_index, index_label,index_main_title,
 } 
 
 
+
+# Function to remove outliers. Only needed when calculating global sums
+f_global_sum_without_outliers <- function(myraster_layer) {
+  
+  out_values <- quantile(values(myraster_layer), probs = 0.99, na.rm = T)
+  
+  myraster_new <- myraster_layer
+  myraster_new[myraster_new > out_values] <- NA
+  
+  totsum <- global(myraster_new, fun = "sum", na.rm = T)
+  return(totsum)
+  
+}
