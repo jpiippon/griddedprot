@@ -21,6 +21,7 @@ library(tidyverse); library(raster); library(terra); library(sf)
 library(scico); library(tmap); library(data.table)
 library(here); library(tictoc); library(rmapshaper)
 library(PolyTrend); library(countrycode);library(readxl) 
+library(broom); library(tidyr)
 
 
 
@@ -55,38 +56,40 @@ Finland_ext <- ext(21, 31.5, 60, 70)
 
 
 # -------------------------------------------------------- create country raster
-#adm10_simple <- ms_simplify(adm_10m) #  203 row -- was 258
-
-# change adm10 iso codes to fao codes
-# adm10_simple_faoadded <- adm10_simple %>% 
-#   dplyr::select(ADMIN, NAME, SOVEREIGNT, ISO_A3_EH) %>% 
+# adm10_simple <- ms_simplify(adm_10m) #  203 row -- was 258
+# 
+# #change adm10 iso codes to fao codes
+# adm10_simple_faoadded <- adm10_simple %>%
+#   dplyr::select(ADMIN, NAME, SOVEREIGNT, ISO_A3_EH, REGION_UN) %>%
 #   as.data.frame() %>%
 #   st_drop_geometry()
 # 
-# adm10_simple_faoadded <- adm10_simple_faoadded %>% 
+# adm10_simple_faoadded <- adm10_simple_faoadded %>%
 #   mutate(fao_from_iso3eh = countrycode(.$ISO_A3_EH, origin = "iso3c", destination = "fao"),
 #          # find fao code also using name of sovereignts (combine these cols later to get match)
 #          fao_from_SOVEREIGNT = countrycode(.$SOVEREIGNT, origin = "country.name",  destination = "fao"))
 # ## warns that some are missing. However, either fao_from_iso3eh or fao_from_SOVEREIGNT includes most
 # 
 # ## give Somaliland FAO code of Somalia
-# adm10_simple_faoadded <- adm10_simple_faoadded %>% 
+# adm10_simple_faoadded <- adm10_simple_faoadded %>%
 #   rows_update(., tibble(
-#     SOVEREIGNT = "Somaliland", 
-#     fao_from_SOVEREIGNT = (filter(adm10_simple_faoadded, SOVEREIGNT == "Somalia") %>% 
+#     SOVEREIGNT = "Somaliland",
+#     fao_from_SOVEREIGNT = (filter(adm10_simple_faoadded, SOVEREIGNT == "Somalia") %>%
 #                              pull(fao_from_SOVEREIGNT))))
 # 
-# ## combine cols fao_from_iso3eh and fao_from_SOVEREIGNT. 
+# ## combine cols fao_from_iso3eh and fao_from_SOVEREIGNT.
 # ## If any of the columns has value, this value will be the FAO_ID
-# adm10_simple_faoadded <- adm10_simple_faoadded %>% 
-#   mutate(FAO_ID = coalesce(fao_from_iso3eh, fao_from_SOVEREIGNT)) %>% 
+# adm10_simple_faoadded <- adm10_simple_faoadded %>%
+#   mutate(FAO_ID = coalesce(fao_from_iso3eh, fao_from_SOVEREIGNT)) %>%
 #   filter(SOVEREIGNT != "Antarctica")  ## drop antarctica
-#  
 # 
 # 
 # 
-# ## convert to raster
 # adm10_simple_faoadded <- st_as_sf(adm10_simple_faoadded)
+# # save for intermediate use
+# st_write(adm10_simple_faoadded, 
+#          here("Data", "Intermediate_input", "adm10_simple_faoadded.gpkg"))
+
 
 
 
@@ -96,6 +99,7 @@ adm10_simple_faoadded <-
   here("Data", "Intermediate_input", "adm10_simple_faoadded.gpkg") %>% 
   st_read()
 
+## convert to raster
 cntry_raster <- rasterize(vect(adm10_simple_faoadded),
                           template_rast_5arcmin, field = "FAO_ID") 
 #plot(cntry_raster, main = "Antarctica neede or not?") 
