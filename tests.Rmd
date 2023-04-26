@@ -254,8 +254,6 @@ all_countries_cleaned_SIover1 <- adm10_simple_faoadded %>%
   mutate(model_list_SIover1 = map(model_list_SIover1, ~ as_tibble(.x))) %>%
   unnest(cols = model_list_SIover1)
 ```
-
-
 # Compare models
 
 ```{r}
@@ -327,5 +325,88 @@ by_country
 
 
 
+```
+
+
+
+# Testaa suitability hommia Suomi
+
+Selvitä: kuinka paljon saataisiin lisää proteiinia suomesta, jos alueet, joilla SI >= 10 valjastettaisiin kasvintuotantoon? 
+
+```{r}
+fi_r_physical_areas_crops_sum_ha_perpix <- crop_and_mask(r_physical_areas_crops_sum_ha_perpix, Finland_geom)
+fi_r_fraction_cl_NAto0 <- crop_and_mask(r_fraction_cl_NAto0, Finland_geom)
+fi_r_fraction_cl <- crop_and_mask(r_fraction_cl, Finland_geom)
+fi_r_fraction_gl <- crop_and_mask(r_fraction_gl, Finland_geom)
+fi_r_fraction_gl_cl_total <- crop_and_mask(r_fraction_gl_cl_total, Finland_geom)
+
+fi_SI_30arcsec <- crop_and_mask(SI_30arcsec, Finland_geom)
+
+
+# vilja-ala sekä laidunala --- ei vielä mitään SI luokista
+fi_df_SI <-
+  tibble(
+    SI_class = threshold_values,
+    
+    gl_total_area_Mha = 
+           pull(global((fi_r_fraction_gl * cellSize(fi_r_fraction_gl, unit = "ha")), "sum", na.rm = T)/1e6),
+    cl_total_area_Mha = 
+           pull(global((fi_r_fraction_cl * cellSize(fi_r_fraction_cl, unit = "ha")), "sum", na.rm = T)/1e6),
+    gl_cl_total_area_Mha = 
+           pull(global((fi_r_fraction_gl_cl_total * cellSize(fi_r_fraction_gl_cl_total, unit = "ha")), "sum",
+                       na.rm = T)/1e6))
+# ! varmaan suht oikein tähän saakka
+
+
+
+
+# ------------------------SI mukainen rajoittamaton maatalousmaan määrä Suomessa 
+  # kuinka paljon on sellaista maata, jossa SI >=10?
+fi_SI_10orOver <- fi_SI_30arcsec
+fi_SI_10orOver[fi_SI_10orOver < 10] <- 0 
+fi_SI_10orOver[fi_SI_10orOver >= 10] <- 1 # plot and see
+fi_SI_10orOver_fraction <- aggregate(fi_SI_10orOver, fact = 10, na.rm = T) %>% 
+  resample(., template_rast_5arcmin) %>% 
+  crop_and_mask(., Finland_geom) # arvoja 0 j1 1 väliltä
+
+global(fi_SI_10orOver_fraction * cellSize(fi_SI_10orOver_fraction, unit = "ha"), "sum", na.rm = T)/1e6 # 10.2 Mha eli noin 10x nykyinen maatalousmaa
+
+  # kokeillaan antaako globaali fkt saman tuloksen
+fi_r_SI_class_fraction <- crop_and_mask(r_SI_class_fraction, Finland_geom)
+fi_r_agrlandarea_inZabel_unrestricted_ha_perpix <- crop_and_mask(r_agrlandarea_inZabel_unrestricted_ha_perpix, Finland_geom)
+
+  # ei näytä ihan samalta
+plot(fi_r_agrlandarea_inZabel_unrestricted_ha_perpix$FracOfCellOvr9, main = "global funktio vaihda myöh 9 -- 10")
+plot(fi_SI_10orOver_fraction * cellSize(fi_SI_10orOver_fraction, unit = "ha"), main = "itse laskettu si>=10 agrland")
+
+fi_df_SI <- fi_df_SI %>% 
+  mutate(unrestricted_agrland_perSIclass_Mha = 
+           pull(global(fi_r_agrlandarea_inZabel_unrestricted_ha_perpix, "sum", na.rm = T)/1e6))
+
+fi_df_SI$unrestricted_agrland_perSIclass_Mha <-  format(fi_df_SI$unrestricted_agrland_perSIclass_Mha, scientific = FALSE)
+# tapa 2 toimi paremmin yllä
+
+
+
+
+# --------------------------------- limig agr land suomi
+f_limit_agrland <- function(i) {
+  ifel(fi_r_SI_class_fraction[[i]] > fi_r_fraction_gl_cl_total, 
+       fi_r_fraction_gl_cl_total, 
+       fi_r_SI_class_fraction[[i]])
+}
+
+fi_r_fraction_agrland_max <- lapply(threshold_values, f_limit_agrland) %>% 
+  rast() 
+
+fi_r_agrland_max_ha_perpix <-
+  fi_r_fraction_agrland_max *
+  cellSize(fi_r_fraction_agrland_max, unit = "ha")
+
+fi_df_SI <- fi_df_SI %>% 
+  mutate(agrLandMax_Mha = pull(global(fi_r_agrland_max_ha_perpix, fun = "sum", na.rm = T)/1e6))
+# Kun SI = 0 nykyinen kokonaisala gl+cl on suunnilleen sama kuin max agr area
+# Sitten max_agr_ala alkaa pienentyä (suhteessa gl+cl) koska monet alueet, joilla SI = 0 tai 1 tai 2 ovat
+# viljeltyjä ja kontribuoivat kokonaishehtaarimäärään
 ```
 

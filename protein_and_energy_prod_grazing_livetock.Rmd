@@ -141,12 +141,12 @@ fbs_animals_wide_filled <- bind_rows(fbs_animals_wide_filled_list)
 r_fraction_gl <- 
   here("Data", "Input", "from_harddrive", ## add so that this file is in same place
        "fraction_of_cell_that_is_hyde_grazingland.tif") %>%  
-  rast() 
+  rast() # if value > 1 it should be just 1
 plot(r_fraction_gl, main = "fraction of HYDE grazing lands")
 
 
 
-# AGB in HYDE areas
+# AGB in HYDE areas -------------- to be extra sure, mask this with r_fraction_gl_0
 r_simulated_agb_vars <- #actually also from hard drive originally
   here("Data", "Intermediate_input", "simulated_agb5v_agbIV_agbCV.tif") %>% 
   rast()
@@ -406,6 +406,9 @@ f_global_sum_without_outliers(r_protein_from_065xAGB_kg_perpix$dairy) /1e9 # 27 
 f_global_sum_without_outliers(r_protein_from_065xAGB_kg_perpix$beef) /1e9 # 6  was9 beef
 f_global_sum_without_outliers(r_protein_from_065xAGB_kg_perpix$sheep_and_goats) /1e9 # 6 #was 9 sheep_and_goats
 
+
+
+global(f_raster_without_outliers(r_protein_from_065xAGB_kg_perpix$dairy), "sum", na.rm = T)/1e9 # 30
 # trimmed_value_proteinAGB <-
 #   quantile(values(r_protein_from_AGB_kg_perpix), 0.99, na.rm = T)
 # r_protein_from_AGB_kg_perpix_trim <- r_protein_from_AGB_kg_perpix
@@ -418,7 +421,7 @@ f_global_sum_without_outliers(r_protein_from_065xAGB_kg_perpix$sheep_and_goats) 
 r_kcal_animals_MM_perpix <- 
   r_kcal_from_065xAGB_MM_ha * cellSize(r_kcal_from_065xAGB_MM_ha, unit ="ha") *
   r_fraction_gl
-global(r_kcal_animals_MM_perpix*1e6, fun = "sum", na.rm = T)/1e12 # dairy 328 #was dairy 505 trillion kcal
+global(r_kcal_animals_MM_perpix*1e6, fun = "sum", na.rm = T)/1e12 # dairy 328 beef 73 sheep 111
 
 hist(r_kcal_animals_MM_perpix*1e6) # sus high vals (over 2e9 for dairy)
 
@@ -434,12 +437,15 @@ f_global_sum_without_outliers(r_kcal_animals_MM_perpix$sheep_and_goats_MMkcal_ha
 # livestock protein masked to cropland areas --- uncomment when need to calculte these
 
 
-# r_protein_from_AGB_kg_perpix_masked_to_croplands <-
-#   mask(r_protein_from_065xAGB_kg_perpix, r_physical_areas_crops_sum_ha_perpix)
-# f_global_sum_without_outliers(r_protein_from_AGB_kg_perpix_masked_to_croplands$dairy) /1e9 # 26 dairy
-# f_global_sum_without_outliers(r_protein_from_AGB_kg_perpix_masked_to_croplands$beef) /1e9 # 6 beef
-# f_global_sum_without_outliers(r_protein_from_AGB_kg_perpix_masked_to_croplands$sheep_and_goats) /1e9 # 6 sheep and goats
-# 
+r_protein_from_AGB_kg_perpix_masked_to_croplands <-
+  mask(r_protein_from_065xAGB_kg_perpix, r_physical_areas_crops_sum_ha_perpix)
+
+global(r_protein_from_AGB_kg_perpix_masked_to_croplands, "sum", na.rm = T)/1e9
+
+f_global_sum_without_outliers(r_protein_from_AGB_kg_perpix_masked_to_croplands$dairy) /1e9 #  dairy
+f_global_sum_without_outliers(r_protein_from_AGB_kg_perpix_masked_to_croplands$beef) /1e9 #  beef
+f_global_sum_without_outliers(r_protein_from_AGB_kg_perpix_masked_to_croplands$sheep_and_goats) /1e9 #  sheep and goats
+
 # 
 # 
 # # livestock protein masked to unsuitable areas in hyde_suitabilities.Rmd

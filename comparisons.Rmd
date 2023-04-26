@@ -39,6 +39,7 @@ r_kcal_from_065xAGB_MM_ha <- here("Data", "Intermediate_input","r_kcal_from_065x
 
 # ------------------------------------------------- fractions
 r_fraction_cl <- here("Data", "Intermediate_input","r_fraction_cl_with_27_spamcrops.tif") %>% rast()
+r_fraction_cl[r_fraction_cl >1] <- 1
 r_fraction_cl_0toNA <- classify(r_fraction_cl, cbind(0,NA))
 r_fraction_cl_NAto0 <- classify(r_fraction_cl, cbind(NA,0))
 
@@ -50,6 +51,7 @@ summary(r_fraction_cl_NAto0) # min 0 max 1.004 NA's 0
 
 r_fraction_gl <-  
   here("Data","Input","from_harddrive","fraction_of_cell_that_is_hyde_grazingland.tif") %>% rast()
+r_fraction_gl[r_fraction_gl >1] <- 1
 r_fraction_gl_0toNA <- classify(r_fraction_gl, cbind(0,NA))
 r_fraction_gl_NAto0 <- classify(r_fraction_gl, cbind(NA,0))
 

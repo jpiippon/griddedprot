@@ -13,8 +13,28 @@ output: html_document
 # Additional packages (in addition to those found in packages_etc_run_this_first.R)
 
 ```{r include = F}
-packages <-  c("Rfast", "matrixStats")
-lapply(packages, require, character.only = TRUE)
+# packages <-  c("Rfast", "matrixStats")
+# lapply(packages, require, character.only = TRUE)
+
+
+
+create_dynamic_index_map <- function(myraster, layer_num, main_title, 
+                                     diff_breakvals = c(-Inf, 10, 20, 60, 80, 100, Inf)) {
+  
+  plt_dynamic_map <- 
+    create_index_map(r_index = myraster[[layer_num]], 
+                     tocrs = "ESRI:54030",
+                     index_main_title = sprintf(main_title, layer_num),
+                     index_label = "",
+                     colorpal = pal_share_nuuk,
+                     breakvals = diff_breakvals,
+                     breaknames = c("<10", "10-20", "20-60", "60-80", "80-100", ">100"))
+  return(plt_dynamic_map)
+}
+
+
+# Create a vector of threshold values from 0 to 99
+threshold_values <- 0:99
 ```
 
 
@@ -456,58 +476,109 @@ tmap_save(plts_shareofprotein, filename = here("Figures", "plts_shareofprotein.p
 From suitabilities script
 
 ```{r}
-
-(plt_r_share_SIover75max <- 
-    create_index_map(r_index = r_fraction_SIover75_max_0toNA*100, # updated so 0 areas are white
-                     tocrs = "ESRI:54030",
-                     index_main_title = "Share of very suitable land area that could be used for crop production",
-                     index_label = "% of cell",
-                     colorpal = pal_share_nuuk,
-                     breakvals = c(0, 10, 20, 40, 60, 80, 100),
-                     breaknames = c("<10", "10-20", "20-40", "40-60","60-80", "80-100")))
+# max cropland share
+(plt_max_cropland_share_in_SI_class_1 <-
+      create_dynamic_index_map(r_SIbased_restricted_max_cropland_fraction, 1,
+                               diff_breakvals = c(-Inf, 0.10, 0.20, 0.60, 0.80, 1, Inf),
+"Land area that could be used for crop production when SI threshold ≥ 1"))
 
 
-
-(plt_percent_gl_should_decline <- 
-    create_index_map(r_index = r_how_many_percent_gl_should_decline_0toNA, 
-                     tocrs = "ESRI:54030",
-                     index_main_title = "How much grazing lands area could decline (to make space for crops)",
-                     index_label = "%",
-                     colorpal = pal_share_nuuk,
-                     breakvals = c(0, 10, 20, 60, 80, 100, Inf),
-                     breaknames = c("<10", "10-20", "20-60", "60-80", "80-100", ">100")))
+(plt_max_cropland_share_in_SI_class_33 <-
+      create_dynamic_index_map(r_SIbased_restricted_max_cropland_fraction, 33,
+                               diff_breakvals = c(-Inf, 0.10, 0.20, 0.60, 0.80, 1, Inf),
+"Land area that could be used for crop production when SI threshold ≥ 33"))
 
 
-(plt_percent_cl_should_increase <- 
-    create_index_map(r_index = r_how_many_percent_cl_should_increase, 
-                     tocrs = "ESRI:54030",
-                     index_main_title = "How much cropland area could increase (at the cost of grazing lands)",
-                     index_label = "",
-                     colorpal = pal_share_nuuk,
-                     breakvals = c(0, 10, 20, 60, 80, 100, Inf),
-                     breaknames = c("<10", "10-20", "20-60", "60-80", "80-100", ">100")))
+(plt_max_cropland_share_in_SI_class_75 <-
+      create_dynamic_index_map(r_SIbased_restricted_max_cropland_fraction, 75,
+                               diff_breakvals = c(-Inf, 0.10, 0.20, 0.60, 0.80, 1, Inf),
+"Land area that could be used for crop production when SI threshold ≥ 75"))
 
 
 
-(plt_r_optimized_protein_yield_larger <-
-      create_index_map(r_index = r_optimized_protein_yield_larger$dairy, 
-                     tocrs = "ESRI:54030",
-                     index_main_title = "Optimised protein production compared to original combined protein production \n (here dairy + crops considered)",
-                     index_label = "%",
-                     colorpal = pal_share_nuuk,
-                     breakvals = c(-Inf, 1, 20, 50, 100, Inf),
-                     breaknames = c("No change", "<20", "20-50", "50-100", ">100")))
+# cropland expansion %
+(plt_cropland_expansion_when_SI_class_ge_1 <- 
+    create_dynamic_index_map(myraster = r_cropland_expansion_percent,
+                             layer_num = 1,
+                             main_title = "Cropland expansion potential when SI threshold ≥ 1"))
 
 
-plts_optimised <- tmap_arrange(
-  plt_r_share_SIover75max,
-  plt_percent_gl_should_decline,
-  plt_percent_cl_should_increase,
-  plt_r_optimized_protein_yield_larger
+(plt_cropland_expansion_when_SI_class_ge_33<- 
+    create_dynamic_index_map(myraster = r_cropland_expansion_percent,
+                             layer_num = 33,
+                             main_title = "Cropland expansion potential when SI threshold ≥ 33"))
+
+
+(plt_cropland_expansion_when_SI_class_ge_75<- 
+    create_dynamic_index_map(myraster = r_cropland_expansion_percent,
+                             layer_num = 75,
+                             main_title = "Cropland expansion potential when SI threshold ≥ 75"))
+
+
+
+
+# cropland expansion % outside croplands
+(plt_cropland_expansion_outside_croplands_when_SI_class_ge_1 <-
+    create_dynamic_index_map(myraster = r_cropland_expansion_percent_outside_croplands,
+                             layer_num = 1,
+                             main_title = "Cropland expansion potential outside croplands when SI threshold ≥ 1" ))
+
+(plt_cropland_expansion_outside_croplands_when_SI_class_ge_33 <-
+    create_dynamic_index_map(myraster = r_cropland_expansion_percent_outside_croplands,
+                             layer_num = 33,
+                             main_title = "Cropland expansion potential outside croplands when SI threshold ≥ 33" ))
+
+
+(plt_cropland_expansion_outside_croplands_when_SI_class_ge_75 <-
+    create_dynamic_index_map(myraster = r_cropland_expansion_percent_outside_croplands,
+                             layer_num = 75,
+                             main_title = "Cropland expansion potential outside croplands when SI threshold ≥ 75" ))
+
+
+
+
+
+# yield larger percent
+plt_optimized_protein_yield_larger_when_SI_class_ge_1  <- 
+  create_dynamic_index_map(r_optimized_protein_yield_larger_percent,
+                           layer_num = 1,
+                           main_title = "Optimized combined protein production compared to original protein production (dairy + 27 crops) when SI threshold ≥ 1")
+
+plt_optimized_protein_yield_larger_when_SI_class_ge_33  <- 
+  create_dynamic_index_map(r_optimized_protein_yield_larger_percent,
+                           layer_num = 33,
+                           main_title = "Optimized combined protein production compared to original protein production (dairy + 27 crops) when SI threshold ≥ 33")
+
+plt_optimized_protein_yield_larger_when_SI_class_ge_75  <- 
+  create_dynamic_index_map(r_optimized_protein_yield_larger_percent,
+                           layer_num = 75,
+                           main_title = "Optimized combined protein production compared to original protein production (dairy + 27 crops) when SI threshold ≥ 75")
+
+
+plts_optimized <- 
+tmap_arrange(
+  plt_max_cropland_share_in_SI_class_1,
+  plt_max_cropland_share_in_SI_class_33,
+  plt_max_cropland_share_in_SI_class_75,
+  plt_cropland_expansion_when_SI_class_ge_1,
+  plt_cropland_expansion_when_SI_class_ge_33,
+  plt_cropland_expansion_when_SI_class_ge_75,
+  plt_cropland_expansion_outside_croplands_when_SI_class_ge_1,
+  plt_cropland_expansion_outside_croplands_when_SI_class_ge_33,
+  plt_cropland_expansion_outside_croplands_when_SI_class_ge_75,
+  plt_optimized_protein_yield_larger_when_SI_class_ge_1,
+  plt_optimized_protein_yield_larger_when_SI_class_ge_33,
+  plt_optimized_protein_yield_larger_when_SI_class_ge_75,
+  ncol = 3, nrow = 4
 )
 
-tmap_save(plts_optimised, here("Figures", "plts_optimised.pdf"))
+
+
+tmap_save(plts_optimized, here("Figures", "plts_optimised.pdf"))
+
 ```
+
+'```
 
 
 

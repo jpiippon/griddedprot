@@ -47,7 +47,7 @@ adm_10m <- here("Data", "Input", "ne_10m_admin_0_countries.shp") |>
 Finland_geom <- adm_10m %>% filter(ADMIN == "Finland") %>% dplyr::select(ADMIN) |> 
   as("Spatial") |>   vect()
 
-Finland_ext <- ext(21, 31.5, 60, 70)
+#Finland_ext <- ext(21, 31.5, 60, 70)
 
 
 
@@ -262,6 +262,25 @@ create_index_map_no_cntry <- function(r_index, index_label,index_main_title,
 
 
 # Function to remove outliers. Only needed when calculating global sums
+f_raster_without_outliers <- function(myraster_layer) {
+  # Calculate quantiles for both 0.01 and 0.99
+  quantiles <- quantile(values(myraster_layer), probs = c(0.01, 0.99), na.rm = T)
+  
+  # Define classification rules with "from-to-becomes" structure
+  rcl_outliers <- matrix(c(-Inf, quantiles[1], quantiles[1],
+                           quantiles[2], Inf, quantiles[2]), ncol = 3, byrow = T)
+  
+  # Classify raster values according to rules, with include.lowest and right set
+  myraster_new <- classify(myraster_layer, rcl_outliers, include.lowest = TRUE, right = NA)
+  
+  return(myraster_new)
+}
+
+
+
+
+
+
 f_global_sum_without_outliers <- function(myraster_layer) {
   
   out_values <- quantile(values(myraster_layer), probs = 0.99, na.rm = T)

@@ -55,16 +55,20 @@ pal_ANPP_fraction<-  scico(n = 7, palette = "hawaii", begin = 0.1, end = 0.8)
 
 
 ```{r}
-  ## detect areas where fraction_total > 100
-fraction_total_over1 <- fraction_total
-fraction_total_over1[fraction_total_over1 < 1] <- NA 
 
-r_fractions_crops_and_grazing_lands <- c(
-  r_grazingland_fraction,
-  r_fraction_of_crops_in_cell,
-  fraction_total,
-  fraction_total_over1
+
+r_fractions_cl_gl_and_total <- c(
+  r_fraction_gl_0toNA,
+  r_fraction_cl_0toNA,
+  r_fraction_gl_cl_total_0toNA
 )
+
+names(r_fractions_cl_gl_and_total) <- c(
+  "Share of HYDE grazing lands in cell",
+  "Share of cropland in cell", 
+  "Share of grazing land and cropland combined (i.e. agricultural land) in cell")
+  
+
 
 
 
@@ -75,32 +79,28 @@ r_fractions_crops_and_grazing_lands <- c(
   ## combine fractions of crops in 5arcmin cells with fractions of pastures
 
 
-names(r_fractions_crops_and_grazing_lands) <- c(
-  "Share of HYDE grazing lands in cell",
-  "Share of cropland in cell", 
-  "Share of grazing land and cropland combined", 
-  "Areas where combined share > 100%")
 
 
-pal_shares <-  scico(n = 3, palette = "hawaii", begin = 0.1, end = 0.8)
+
+pal_share_nuuk <- scico(n = 7, palette = "nuuk",  direction = -1) 
 
 (plt_shares_of_croplands_and_pasturelands <- 
-    create_index_map(r_index = r_fractions_crops_and_grazing_lands*100,
+    create_index_map(r_index = r_fractions_cl_gl_and_total*100,
                      tocrs = "ESRI:54030",
                      index_main_title = "Shares of croplands and grazing lands in 5 arc-minutes cells",
                      index_label = "",
-                     colorpal = pal_shares,
-                     breakvals =  c(0,10,20,40,60,80, 100, Inf),
-                     breaknames = c("0-10", "10-20","20-40","40-60","60-80", "80-100", ">100")) )
+                     colorpal = pal_share_nuuk,
+                     breakvals =  c(0,10,20,40,60,80, Inf),
+                     breaknames = c("0-10", "10-20","20-40","40-60","60-80", "80-100")) )
 
 
 
 
 
-# tmap_save(plt_shares_of_croplands_and_pasturelands, 
-#           here("Figures", "Supplementary",
-#                "Shares of croplands and pasturelands in 5 arc-minutes cells.png"),
-#           width = 180, height = 150, units = "mm")
+tmap_save(plt_shares_of_croplands_and_pasturelands,
+          here("Figures", "Supplementary",
+               "Shares of croplands and pasturelands in 5 arc-minutes cells.pdf"),
+          width = 180, height = 150, units = "mm")
 ```
 
 
