@@ -27,6 +27,7 @@
 *.db
 *.Rproj.user
 *.Rdata
+*.RData
 .Rproj.user
 Data/
 Delete/

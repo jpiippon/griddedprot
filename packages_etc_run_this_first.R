@@ -163,10 +163,10 @@ adm10_simple_faoadded_rob <-  adm10_simple_faoadded %>%
 
 
  ## regions
-# reg <- here("Data", "Input", "reg_mollw.gpkg") |>  st_read()
-# reg_rob <- st_transform(reg, crs = "ESRI:54030")
-# reg_wgs <- st_transform(reg, crs = "EPSG:4326")
-# reg_wgs_vect <- vect(as(reg_wgs, "Spatial"))
+reg <- here("Data", "Input", "reg_mollw.gpkg") |>  st_read()
+reg_rob <- st_transform(reg, crs = "ESRI:54030")
+reg_wgs <- st_transform(reg, crs = "EPSG:4326")
+reg_wgs_vect <- vect(as(reg_wgs, "Spatial"))
 # 
 # reg_rob <- reg_rob |> 
 #   mutate(subregion = c("Australia and Oceania", "Central America",
@@ -292,3 +292,8 @@ f_global_sum_without_outliers <- function(myraster_layer) {
   return(totsum)
   
 }
+
+
+
+land_mask <- ifel(cntry_raster > 0, 1, NA)
+plot(land_mask) # plot to get rid of error

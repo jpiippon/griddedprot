@@ -13,7 +13,7 @@ Estimoi paljonko viljasato olisi alueilla, jotka voitaisiin muuntaa laitumesta v
 ```{r}
 # SI
 SI_5arcmin <- here("Data", "Input", "Zabel22_SI",
-                   "SI_5arcmin_overall_suitability_hist1980_2009_current_irr_areas_applied.tif") %>% 
+                   "SI_5arcmin_overall_suitability_subset1to17_hist1980_2009_current_irr_areas_applied.tif") %>% #changed
   rast()
 
 # Crop protein production yields
@@ -24,7 +24,7 @@ r_prot_allcrops_sum_kg_ha <-
 quantile(values(r_prot_allcrops_sum_kg_ha), probs = 0.95, na.rm = T) # 826.4333  
 
 r_protein_and_SI <- c(r_prot_allcrops_sum_kg_ha, SI_5arcmin)
-#names(r_protein_and_SI) <- c("crop_protein_kg_ha", "overall_suitability") # if not correct already
+names(r_protein_and_SI) <- c("crop_protein_kg_ha", "overall_suitability") # if not correct already
 
 
 plot(r_protein_and_SI)
@@ -80,7 +80,7 @@ country_df_filtered_list[[53]] # tässä data regressiota varten
 # Wrapper function for linear regression
 fit_lm_possibly <- function(data) {
   
-  model_output <- lm(crop_protein_kg_ha ~ overall_suitability, data = data) 
+  model_output <- lm(crop_protein_kg_ha ~ overall_suitability , data = data) 
   
   model_coef <- model_output %>% 
     broom::tidy() %>%
@@ -256,7 +256,7 @@ r_intercept_filled <-
   rasterize(updated_regression_results, template_rast_5arcmin, field="estimate_intercept_filled")
 
 
-
+plot(SI_5arcmin)
 r_predicted_protein_yield_kg_ha<- r_intercept_filled + r_suitability_filled * SI_5arcmin
 
 
@@ -271,12 +271,19 @@ r_predicted_protein_yield_outside_cl_but_in_gl_areas_kg_ha <-
   mask(r_predicted_protein_yield_outside_cl_kg_ha, 
        r_fraction_gl_0toNA)
 
+# one more mask to areas where SI > 0
+SI_5arcmin_test <- SI_5arcmin
+SI_5arcmin_test[SI_5arcmin_test < 1] <- NA
+r_predicted_protein_yield_outside_cl_but_in_gl_areas_and_in_suitable_areas_kg_ha <-
+  mask(r_predicted_protein_yield_outside_cl_but_in_gl_areas_kg_ha, SI_5arcmin_test)
 
+summary(r_predicted_protein_yield_outside_cl_but_in_gl_areas_and_in_suitable_areas_kg_ha)
+summary(r_prot_allcrops_sum_kg_ha)
 
 pal_protein_lajolla <- scico(n = 6, palette = "lajolla", end = 0.85) 
 
 (plt_crop_protein_predicted <- 
-  create_index_map(r_index = r_predicted_protein_yield_outside_cl_but_in_gl_areas_kg_ha, 
+  create_index_map(r_index = r_predicted_protein_yield_outside_cl_but_in_gl_areas_and_in_suitable_areas_kg_ha, 
                    tocrs = "ESRI:54030",
                    index_main_title = "Test estimated crop protein yields outside current croplands",
                    index_label = "[kg/ha]",

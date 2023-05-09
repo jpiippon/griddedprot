@@ -170,18 +170,19 @@ In this chunk, we are analyzing the Zabel 2022 SI data, specifically looking at 
   # overall_suitability_hist1980_2009_all_rainfed.hdr
 SI_30arcsec <- 
   here("Data", "Input", "Zabel22_SI", 
-       "overall_suitability_hist1980_2009_current_irr_areas_applied.bil") %>% 
+       "overall_suitability_subset_1to17_hist1980_2009_current_irr_areas_applied.bil") %>% # changed!!
+  
   rast()
 plot(SI_30arcsec)
 
 # Aggregate and resample the SI data to 5 arcmin resolution
 SI_5arcmin <- aggregate(SI_30arcsec, fact = 10) %>% 
   resample(., template_rast_5arcmin)
-names(SI_5arcmin) <- "overall_suitability"
+names(SI_5arcmin) <- "overall_suitability_subset1to17"
 plot(SI_5arcmin)
 
-# writeRaster(SI_5arcmin, filename = here("Data", "Input", "Zabel22_SI",
-#                    "SI_5arcmin_overall_suitability_hist1980_2009_current_irr_areas_applied.tif"))
+writeRaster(SI_5arcmin, filename = here("Data", "Input", "Zabel22_SI",
+                   "SI_5arcmin_overall_suitability_subset1to17_hist1980_2009_current_irr_areas_applied.tif"))
 
 
 

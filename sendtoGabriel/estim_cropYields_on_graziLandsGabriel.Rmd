@@ -1,0 +1,285 @@
+---
+title: "Predicting crop yields"
+author: "Johannes Piipponen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+Estimate how much the crop yield would be in grazing lands that could be converted from grazing lands to croplands
+
+
+# Data and packages
+
+```{r}
+library(tidyverse);library(terra);library(sf);library(broom); library(tidyr);library(scico);library(tmap)
+
+template_rast_5arcmin <- rast(nrows=2160, ncols=4320,
+                              crs = "EPSG:4326")
+
+## function for cropping and maskin
+crop_and_mask <- function(r_data, df_cropmask_polygon){
+  r_data |> 
+    crop(df_cropmask_polygon) |> 
+    mask(df_cropmask_polygon) 
+}
+
+## function for plotting
+create_index_map <- function(r_index, index_label,index_main_title,
+                             colorpal, breakvals,
+                             breaknames = NULL,
+                             color_midpoint = NULL, tocrs = NA){
+  if (!is.na(tocrs)){
+    r_index <- project(r_index, tocrs, mask = TRUE)
+  }
+  index_map <- tm_shape(r_index) + 
+    tm_raster(palette = colorpal, # try style = "fixed", 
+              breaks = breakvals,
+              labels = breaknames,
+              title = index_label,
+              midpoint = color_midpoint,
+              legend.is.portrait = FALSE) + # added 9.8.22
+            #  legend.reverse = TRUE) + # deleted 9.8.22
+    tm_layout(main.title = index_main_title,
+              main.title.position = "center",
+              main.title.size = 1,
+              legend.bg.color = TRUE,
+              legend.outside = TRUE,
+              legend.title.size = 1,
+              legend.text.size = 1,
+              legend.outside.size = 0.2,
+              legend.outside.position = "bottom", # added 9,8
+              frame = FALSE)+
+    tm_shape(adm10_simple_faoadded_rob) + # was reg_rob_simple
+    tm_borders(col = NA,  lwd = 0.5)  # lwd was 0.33, col was "grey30",
+  
+  return (index_map)
+} 
+
+
+# SI
+SI_5arcmin <- 
+  "SI_5arcmin_overall_suitability_hist1980_2009_current_irr_areas_applied.tif" %>% 
+  rast()
+
+# Crop protein production yields
+r_prot_allcrops_sum_kg_ha <-
+  "protein_production_27crops_sum_kg_ha.tif" %>% 
+  rast()
+
+quantile(values(r_prot_allcrops_sum_kg_ha), probs = 0.95, na.rm = T) # 826.4333  
+
+r_protein_and_SI <- c(r_prot_allcrops_sum_kg_ha, SI_5arcmin)
+names(r_protein_and_SI) <- c("crop_protein_kg_ha", "overall_suitability") # if not correct already
+
+
+plot(r_protein_and_SI)
+
+```
+
+
+
+
+# Linear regression model for different countries
+
+In this section, we first create a list of countries with their geometric information. We then use lists to associate relevant rasters with each country. Next, we convert raster data into data frames and apply a linear regression using the lm() function to explain crop protein yield based on suitability. Outliers are filtered out based on the 95th percentile of crop protein values.
+
+We implement a safe wrapper function for linear regression modeling, which fits a model for each country using the filtered data. The model results are combined with the original country polygons, and the data is cleaned up by selecting relevant columns and unnesting the model results into a single data frame.
+
+
+```{r}
+adm10_simple_faoadded <-  "adm10_simple_faoadded.gpkg" %>% 
+  st_read()
+all_countries <- adm10_simple_faoadded
+
+
+# create list of countries
+country_sf_list <- all_countries %>%
+  mutate(country_sf_list = map(ADMIN, ~filter(adm10_simple_faoadded, ADMIN == .x))) %>%
+  pull(country_sf_list)
+country_sf_list[[53]] %>% plot() # FI
+
+# find a relevant raster by cropping and masking
+country_raster_list <- map(country_sf_list, ~crop_and_mask(r_protein_and_SI, .x))
+country_raster_list[[53]] %>% plot() # FI
+
+# Convert to data frame
+# Includes coordinates and  crop_protein_kg_ha and  overall_suitability data for each country
+country_df_list <- map(country_raster_list, ~as.data.frame(.x, xy = T) %>% as_tibble())
+country_df_list[[53]] # FI, crop_protein_kg_ha and overall_suitability
+
+
+#  find outliers for every country (list again)
+outlier_level_list <- map_dbl(country_df_list, ~quantile(.x$crop_protein_kg_ha, probs = 0.95, na.rm = T)) # 95 or 99? Gabriel: test different alternatives. E.g not removing at all, removing bottom and top 1%, bottom and top 5% and bottom and top 10%
+outlier_level_list[[53]] # 1243.164 Finland
+
+
+# Filtter so that outliers are removed. Also remove x and y
+country_df_filtered_list <- map2(country_df_list, outlier_level_list, ~.x %>% 
+                                   filter(crop_protein_kg_ha <= .y) %>% # not sure if I should add !is.na(overall_suitability)
+                                   dplyr::select(-c(x, y)))
+
+country_df_filtered_list[[53]] # data for regression
+
+
+
+
+# do regression basd on this filtered data -- use  safe function of purrr to avoind troubles
+# Wrapper function for linear regression
+fit_lm_possibly <- function(data) {
+  
+  model_output <- lm(crop_protein_kg_ha ~ overall_suitability, data = data) 
+  
+  model_coef <- model_output %>% 
+    broom::tidy() %>%
+    dplyr::select(term, estimate, p.value)
+  
+  model_stats <- model_output %>% 
+    broom::glance()
+  
+  # Combine model_coef and model_stats into a single row data frame
+  result <- model_coef %>%
+    mutate(r.squared = model_stats$r.squared,
+           adj.r.squared = model_stats$adj.r.squared,
+           AIC = model_stats$AIC,
+           BIC = model_stats$BIC,
+           nobs = model_stats$nobs,
+           sigma = model_stats$sigma,
+           statistic = model_stats$statistic,
+           p.value = p.value) %>%
+    pivot_wider(names_from = term, values_from = c(estimate, p.value)) %>%
+    rename(estimate_intercept = "estimate_(Intercept)",
+           estimate_suitability = "estimate_overall_suitability",
+           pvalue_suitability = "p.value_overall_suitability") %>%
+    dplyr::select(estimate_intercept, estimate_suitability, pvalue_suitability,
+                  r.squared, adj.r.squared, AIC, BIC, nobs, statistic)
+
+  return(result)
+}
+
+
+
+# Safe version of the linear regression function
+fit_lm_safe <- purrr::possibly(fit_lm_possibly, otherwise = NULL)
+
+
+
+
+model_list <- map(country_df_filtered_list, fit_lm_safe)
+model_list[[53]] # results of Finland but in two rows. Maybe better if everything in one row
+
+
+
+
+
+# combine nested country_df_filtered_list with polygons
+all_countries <- all_countries %>% 
+  mutate(country_df_filtered_list = country_df_filtered_list,
+         model_list = model_list)
+
+
+
+# clean
+all_countries_cleaned <- all_countries %>% 
+  dplyr::select(ADMIN, ISO_A3_EH, REGION_UN, geom, model_list)
+
+
+
+all_countries_cleaned <- all_countries_cleaned %>%
+  mutate(model_list = map(model_list, ~ as_tibble(.x))) %>%
+  unnest(cols = model_list, keep_empty = T)
+
+
+
+#View(all_countries_cleaned)
+```
+
+
+
+# Use nearest neighbour to give values for countries with insignificant regression values
+
+
+```{r}
+# 1) Find countries where the model is not significant. For these countries, only the distance (distance from a country with a p-value > 0.05 to a significant country) is needed.
+
+model_significant <- all_countries_cleaned %>% filter(pvalue_suitability < 0.05) # 124 countries
+model_nonsignificant <- all_countries_cleaned %>% filter(pvalue_suitability >= 0.05 | is.na(pvalue_suitability)) # 78 countries if only non significant
+
+
+
+
+# Find distances for those 78 countries. First, find centroids
+p_adm0_centroids_st <- all_countries_cleaned %>% 
+  dplyr::select(ADMIN, geom) %>% 
+  st_centroid()
+
+
+ # Filter centroids for countries with significant and non-significant models
+significant_centroids <- p_adm0_centroids_st %>%
+  filter(ADMIN %in% model_significant$ADMIN) # 124
+
+nonsignificant_centroids <- p_adm0_centroids_st %>%
+  filter(ADMIN %in% model_nonsignificant$ADMIN) # 78  --------> distances needed only for them
+
+
+
+
+# Calculate distances between non-significant and significant model centroids
+distTemp <- st_distance(nonsignificant_centroids, significant_centroids) %>% 
+  as_tibble() # 78 rows because 88 nonsignificant_centroids and 124 cols as 124 significant countries 
+# Row = centroid of non-significant countries AND
+# Column = centroid of significant countries BETWEEN
+# So (1,1) from the centroid of country Dhekelia Sovereign Base Area to the centroid of country Indonesia
+# So (1,2) from the centroid of country Dhekelia Sovereign Base Area to the centroid of country Malaysia
+
+
+#Find the index of the closest significant model for each non-significant model
+closest_significant_indices <- apply(distTemp, 1, which.min) # for each row, find the minimum distance, and select the significant column (col) with the shortest distance to the non-significant country (row)
+
+
+#Attach the closest significant models to the non-significant models.
+model_nonsignificant_with_closest <- model_nonsignificant %>%
+  mutate(closest_significant_model = model_significant$ADMIN[closest_significant_indices], 
+         closest_significant_index = closest_significant_indices)
+
+# Combine the table "significant" with non-significant ones, for which the closest significant country is known.
+all_countries_with_replacement <- model_significant %>%
+  bind_rows(model_nonsignificant_with_closest) 
+
+
+
+
+# add intercept
+
+updated_regression_results <- all_countries_with_replacement %>%
+  mutate(estimate_suitability_filled = 
+           ifelse(pvalue_suitability >= 0.05 | is.na(pvalue_suitability),
+                  model_significant$estimate_suitability[closest_significant_index],
+                                              estimate_suitability),
+         
+         estimate_intercept_filled = 
+           ifelse(pvalue_suitability >= 0.05 | is.na(pvalue_suitability),
+                  model_significant$estimate_intercept[closest_significant_index],
+                                              estimate_intercept))
+
+
+```
+
+
+# Gabriel: Explore model performance
+
+- create different models using different data
+- with different I mean using data where only top 10% of data is removed or where bottom and top 10% of data is removed or where both top and bottom 1% is removed --> then compare these 3-5 models with the methods proposed in the R book.
+
+
+```{r}
+# Original model where non-sig are not filled or replaced
+all_countries_cleaned$adj.r.squared %>% summary() # 2 to 6 % mean/median values
+
+filter(all_countries_cleaned, pvalue_suitability < 0.05) %>% 
+  dplyr::select(adj.r.squared) %>% summary() # 4-9% mean/med values
+
+```
+
+
+
+
