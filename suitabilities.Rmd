@@ -5,6 +5,9 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
+# ----------------------- chunk 3 laskettu uusilla datoilla
+
+
 ! Koeta laskea uusi extrasato käyttäen perpix arvoja - sitten ei tartte maskata top99% arvoja pois
  --> tuskin vaikuttaa lopputulokseen mutta silti oikeaoppisempaa
 
@@ -21,10 +24,10 @@ r_SIbased_unrestricted_cropland_fraction <-
   here("Data", "Intermediate_input", "Fraction_of_5arcmin_cell_where_SI_ge_threshold.tif") %>%
   rast()
 
-
 r_SIbased_unrestricted_cropland_ha_perpix <-
   here("Data", "Intermediate_input", "unrestricted_amount_of_cropland_therecouldbe_whenSI_ge_threshold_ha_perpix.tif") %>% 
   rast()
+
 
 r_SIbased_restricted_max_cropland_fraction <-
   here("Data", "Intermediate_input", "Fraction_of_cropland_max_when_SI_ge_threshold.tif") %>%
@@ -136,25 +139,6 @@ r_physical_areas_crops_sum_ha_perpix_NAto0 <-
 
 
 
-
-  # gl and cl converted to 0 if NA vals -- otherwise there would be empty areas
-r_fraction_gl_cl_total <- r_fraction_gl_NAto0 + r_fraction_cl_NAto0 # cannot be over 1!
-r_fraction_gl_cl_total[r_fraction_gl_cl_total>1] <- 1
-r_fraction_gl_cl_total_NAto0 <- classify(r_fraction_gl_cl_total, cbind(NA,0)) # totally same as above!
-r_fraction_gl_cl_total_0toNA <- classify(r_fraction_gl_cl_total, cbind(0,NA))
-
-
-
-# Plot these rasters
-plot(r_fraction_cl, main = "cl frac")
-plot(r_fraction_gl, main = "gl frac")
-plot(r_fraction_gl_cl_total, main = "gl +cl frac") # tässä on kaikki mahdolliset alueet
-plot(r_fraction_gl_cl_total_NAto0, main = "gl + cl frac NA to 0") # tässä on kaikki mahdolliset alueet
-plot(r_fraction_gl_cl_total_0toNA, main = "gl + cl frac 0 to NA") # tässä on kaikki mahdolliset alueet
-
-
-
-
 # Define a color palette for the plots
 pal_share_nuuk <- scico(n = 7, palette = "nuuk",  direction = -1) 
 ```
@@ -181,8 +165,9 @@ SI_5arcmin <- aggregate(SI_30arcsec, fact = 10) %>%
 names(SI_5arcmin) <- "overall_suitability_subset1to17"
 plot(SI_5arcmin)
 
-writeRaster(SI_5arcmin, filename = here("Data", "Input", "Zabel22_SI",
-                   "SI_5arcmin_overall_suitability_subset1to17_hist1980_2009_current_irr_areas_applied.tif"))
+# writeRaster(SI_5arcmin, filename = here("Data", "Input", "Zabel22_SI",
+#                    "SI_5arcmin_overall_suitability_subset1to17_hist1980_2009_current_irr_areas_applied.tif"),
+#             overwrite = T)
 
 
 
@@ -224,7 +209,7 @@ threshold_values <- 0:99
 
 # Apply the function for each threshold value and store the results in a list
 result_list_SI_function <- 
-  lapply(threshold_values,f_classify_and_aggregate_resample) # 1.5 hours
+  lapply(threshold_values, f_classify_and_aggregate_resample) # 1.5 hours
 
 # Create a raster stack from the result list
 

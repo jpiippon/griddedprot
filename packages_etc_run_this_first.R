@@ -1,4 +1,4 @@
-# Practicalities
+# Practicalities ----------------------------------- change to native pipe!
 
 # !!!! numeroi scriptit lopuksi: missä järjestyksessä tulee ajaa
 # !!! kehittele funktio, joka laskee 99% quantilen kullekin layerille ja trimmaa rasteria sen mukaan

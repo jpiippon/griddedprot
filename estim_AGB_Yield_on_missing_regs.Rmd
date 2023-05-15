@@ -5,10 +5,14 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
+! valitse sigman perusteella mikä malli merkitsevä! Sitten hae model_list tms avulla lähin merkityksellinen malli
+! kokeile voisko mischanthus jättää pois - paraneeko r¨2 tai merkitsevien maiden lkm?
+! tai laita Gabriel kokeilemaan, koeta vain saada lopputulos itse
+
 # Load data
 
 ```{r}
-# AGB protein per ha ---------- should this be yield instead?
+# AGB protein per ha ---------- should this be yield instead? --> if works use protein
 r_protein_from_065xAGB_kg_ha <- # or this should represent average herd strucutres
   here("Data", "Intermediate_input","r_protein_from_065xAGB_kg_ha.tif") %>% 
   rast()
@@ -18,11 +22,14 @@ SI_grasses_5arcmin <-
        "SI_plants19_20_21_5arcmin.tif") %>% 
   rast()
 
-# test with dairy
-r_protein_and_SI <- c(r_protein_from_065xAGB_kg_ha$dairy, SI_grasses_5arcmin)
+# test with current herd structures
+r_protein_and_SI <- c(r_protein_from_065xAGB_kg_ha$current_herd_str,
+                      SI_grasses_5arcmin)
 
 
+plot(SI_grasses_5arcmin)
 ```
+
 
 # Linear regression model for different countries
 
@@ -42,19 +49,21 @@ country_raster_list[[53]] %>% plot() # FI
 # Muunnetaan country_raster_list dataframeksi
 # löytyy koordinaatit sekä crop_protein_kg_ha  ja overall_suitability data joka maalle
 country_df_list <- map(country_raster_list, ~as.data.frame(.x, xy = T) %>% as_tibble())
-country_df_list[[53]] # suomen koordinaatit, dairy_protein_kg_ha  ja SI for 3 grasses
+country_df_list[[53]] # suomen koordinaatit, current_herd_str_protein_kg_ha  ja SI for 3 grasses
 
 
 # etsitään datasta outlierit joka maalle (taas lista)
-outlier_level_list <- map_dbl(country_df_list, ~quantile(.x$dairy , probs = 0.95, na.rm = T)) # 95 or 99?
+outlier_level_list <- map_dbl(country_df_list, ~quantile(.x$current_herd_str,
+                                                         probs = 0.95, na.rm = T)) # 95 or 99?
 outlier_level_list[[53]] 
 
 
 
 
 # Filtteröidään data niin, että outlierit poistettu. Poistetaan myös x ja y
-country_df_filtered_list <- map2(country_df_list, outlier_level_list, ~.x %>% 
-                                   filter(dairy <= .y) %>% # not sure if I should add !is.na(overall_suitability)
+country_df_filtered_list <- 
+  map2(country_df_list, 
+       outlier_level_list, ~.x %>% filter(current_herd_str <= .y) %>% # not sure if I should add !is.na(overall_suitability) --> varmaan jos SI == 0 nii myös pois
                                    dplyr::select(-c(x, y)))
 
 country_df_filtered_list[[53]] # tässä data regressiota varten
@@ -66,33 +75,30 @@ country_df_filtered_list[[53]] # tässä data regressiota varten
 # Wrapper function for linear regression
 fit_lm_possibly <- function(data) {
   
-  model_output <- lm(dairy ~ plantspecific_suitability_19 + plantspecific_suitability_20 +
+  model_output <- 
+    lm(current_herd_str ~ plantspecific_suitability_19 + plantspecific_suitability_20 +
                        plantspecific_suitability_21, data = data) 
   
   model_coef <- model_output %>% 
     broom::tidy() %>%
-    dplyr::select(term, estimate, p.value)
+    dplyr::select(term, estimate,  p.value) %>% 
+    pivot_wider(., names_from = term, values_from = c(estimate, p.value))
+  
   
   model_stats <- model_output %>% 
     broom::glance()
   
   # Combine model_coef and model_stats into a single row data frame
   result <- model_coef %>%
-    mutate(r.squared = model_stats$r.squared,
+    mutate(r.squared = model_stats$r.squared, # these from model stats
            adj.r.squared = model_stats$adj.r.squared,
            AIC = model_stats$AIC,
            BIC = model_stats$BIC,
            nobs = model_stats$nobs,
            sigma = model_stats$sigma,
            statistic = model_stats$statistic,
-           p.value = p.value) %>%
-    pivot_wider(names_from = term, values_from = c(estimate, p.value)) # %>%
-    # rename(estimate_intercept = "estimate_(Intercept)",
-    #        estimate_suitability = "estimate_overall_suitability",
-    #        pvalue_suitability = "p.value_overall_suitability") %>%
-    # dplyr::select(estimate_intercept, estimate_suitability, pvalue_suitability,
-    #               r.squared, adj.r.squared, AIC, BIC, nobs, statistic)
-
+           p.value_Ftest = model_stats$p.value)
+  # 
   return(result)
 }
 
@@ -105,8 +111,7 @@ fit_lm_safe <- purrr::possibly(fit_lm_possibly, otherwise = NULL)
 
 
 model_list <- map(country_df_filtered_list, fit_lm_safe)
-model_list[[53]] # suomen tulos, mutta kahdella rivillä, olisi parempi jos kaikki olisivat yhdessä rivissä
-
+model_list[[53]] # suomen tulos, mutta yhdellä rivillä
 
 
 # yhdistetään nested country_df_filtered_list polygonien kanssa
@@ -132,124 +137,18 @@ summary(all_countries_cleaned$p.value_plantspecific_suitability_19)
 summary(all_countries_cleaned$p.value_plantspecific_suitability_20)
 summary(all_countries_cleaned$p.value_plantspecific_suitability_21)
 
-filter(all_countries_cleaned, p.value_plantspecific_suitability_21 < 0.05) %>% 
-  dplyr::select(adj.r.squared) %>% summary()
+
+
+filter(all_countries_cleaned, p.value_Ftest < 0.05) %>% 
+  dplyr::select(adj.r.squared) %>% summary() # mean 0.23 median 0,20
 ```
 
-# Continue
-
-# Test with biomass
+# Use nearest neighbour to give values for countries with insignificant regression values
 
 ```{r}
-# test biomass
-r_protein_and_SI <- c(r_agb_5y_med_in_hyde_gl_kg_ha, SI_grasses_5arcmin)
+model_significant <- all_countries_cleaned %>% filter(pvalue_suitability < 0.05) # 125 maata
+model_nonsignificant <- all_countries_cleaned %>% filter(pvalue_suitability >= 0.05 | is.na(pvalue_suitability))
 
-
-
-all_countries <- adm10_simple_faoadded
-
-# tehdään rasteri kullekin eri maalle (tarvitaan df arvot reg varten) --- tässä listana maapolygonit
-country_sf_list <- all_countries %>%
-  mutate(country_sf_list = map(ADMIN, ~filter(adm10_simple_faoadded, ADMIN == .x))) %>%
-  pull(country_sf_list)
-country_sf_list[[53]] %>% plot() # FI
-
-# tämän listan perustella voidaan maskata rasteri r_protein_and_SI kullekin maalle
-country_raster_list <- map(country_sf_list, ~crop_and_mask(r_protein_and_SI, .x))
-country_raster_list[[53]] %>% plot() # FI
-
-# Muunnetaan country_raster_list dataframeksi
-# löytyy koordinaatit sekä crop_protein_kg_ha  ja overall_suitability data joka maalle
-country_df_list <- map(country_raster_list, ~as.data.frame(.x, xy = T) %>% as_tibble())
-country_df_list[[53]] # suomen koordinaatit, dairy_protein_kg_ha  ja SI for 3 grasses
-
-
-# etsitään datasta outlierit joka maalle (taas lista)
-outlier_level_list <- map_dbl(country_df_list, ~quantile(.x$agb_med_median , probs = 0.95, na.rm = T)) # 95 or 99?
-outlier_level_list[[53]] 
-
-
-
-
-# Filtteröidään data niin, että outlierit poistettu. Poistetaan myös x ja y
-country_df_filtered_list <- map2(country_df_list, outlier_level_list, ~.x %>% 
-                                   filter(agb_med_median  <= .y) %>% # not sure if I should add !is.na(overall_suitability)
-                                   dplyr::select(-c(x, y)))
-
-country_df_filtered_list[[53]] # tässä data regressiota varten
-
-
-
-
-# tehdään regressio tästä filtteröidystä datasta -- käytetään safe funktiota
-# Wrapper function for linear regression
-fit_lm_possibly <- function(data) {
-  
-  model_output <- lm(agb_med_median  ~ plantspecific_suitability_19 + plantspecific_suitability_20 +
-                       plantspecific_suitability_21, data = data) 
-  
-  model_coef <- model_output %>% 
-    broom::tidy() %>%
-    dplyr::select(term, estimate, p.value)
-  
-  model_stats <- model_output %>% 
-    broom::glance()
-  
-  # Combine model_coef and model_stats into a single row data frame
-  result <- model_coef %>%
-    mutate(r.squared = model_stats$r.squared,
-           adj.r.squared = model_stats$adj.r.squared,
-           AIC = model_stats$AIC,
-           BIC = model_stats$BIC,
-           nobs = model_stats$nobs,
-           sigma = model_stats$sigma,
-           statistic = model_stats$statistic,
-           p.value = p.value) %>%
-    pivot_wider(names_from = term, values_from = c(estimate, p.value)) # %>%
-    # rename(estimate_intercept = "estimate_(Intercept)",
-    #        estimate_suitability = "estimate_overall_suitability",
-    #        pvalue_suitability = "p.value_overall_suitability") %>%
-    # dplyr::select(estimate_intercept, estimate_suitability, pvalue_suitability,
-    #               r.squared, adj.r.squared, AIC, BIC, nobs, statistic)
-
-  return(result)
-}
-
-
-
-# Safe version of the linear regression function
-fit_lm_safe <- purrr::possibly(fit_lm_possibly, otherwise = NULL)
-
-
-
-
-model_list <- map(country_df_filtered_list, fit_lm_safe)
-model_list[[53]] # suomen tulos, mutta kahdella rivillä, olisi parempi jos kaikki olisivat yhdessä rivissä
-
-
-
-# yhdistetään nested country_df_filtered_list polygonien kanssa
-all_countries <- all_countries %>% 
-  mutate(country_df_filtered_list = country_df_filtered_list,
-         model_list = model_list)
-
-
-
-# clean
-all_countries_cleaned <- all_countries %>% 
-  dplyr::select(ADMIN, ISO_A3_EH, REGION_UN, geom, model_list)
-
-
-
-all_countries_cleaned <- all_countries_cleaned %>%
-  mutate(model_list = map(model_list, ~ as_tibble(.x))) %>%
-  unnest(cols = model_list, keep_empty = T)
-
-
-kok <- all_countries_cleaned %>% 
-  filter(p.value_plantspecific_suitability_19 < 0.05)
 ```
-
-
 
 

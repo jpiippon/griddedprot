@@ -46,7 +46,7 @@ ggplot(df_regional_averages %>%
 ```
 
 
-# Combine with geometries
+# Combine with geometries and calculate herd structures by countries
 
 ```{r}
 # to long format
@@ -150,59 +150,60 @@ to separate livestock-only systems from mixed (or industrial) production systems
 ```
 
 
-# Explore herd structures at regional level - not by country
+
+# Explore herd structures at regional level - not by country -- maybe not needed
 
 ```{r}
-reg_wgs_rast <-
-  reg_wgs %>% 
-  mutate(regnumber = 1:nrow(.)) %>% 
-  as(., "Spatial") %>% 
-  vect() %>% 
-  rasterize(., template_rast_5arcmin,  field = "regnumber")
-
-plot(reg_wgs_rast)
-
-
-
-df_regional_herd_shares <- 
-  extract(r_herd, reg_wgs_vect, fun = "mean", na.rm = T) # reg_wgs_vect in packages script
-
-df_regional_herd_shares <- df_regional_herd_shares %>% 
-  mutate(subregion = reg_wgs_vect$Region_new,
-         regnumber = 1:nrow(.))
-
-
-df_regional_herd_shares <- 
-  left_join(reg_wgs, df_regional_herd_shares, by = c("Region_new" = "subregion")) 
-  
-
-plot(df_regional_herd_shares)
-
-r_regional_herd_shares_dairy <- df_regional_herd_shares %>% 
-  as(., "Spatial") %>% 
-  vect() %>% 
-  rasterize(., template_rast_5arcmin,  field = "dairy_share")
-
-
-r_regional_herd_shares_beef <- df_regional_herd_shares %>% 
-  as(., "Spatial") %>% 
-  vect() %>% 
-  rasterize(., template_rast_5arcmin,  field = "beef_share")
-
-
-r_regional_herd_shares_sheepandgoat <- df_regional_herd_shares %>% 
-  as(., "Spatial") %>% 
-  vect() %>% 
-  rasterize(., template_rast_5arcmin,  field = "sheep_and_goats_share")
-
-
-r_regional_herd_shares <- c(
-  r_regional_herd_shares_dairy,
-  r_regional_herd_shares_beef,
-  r_regional_herd_shares_sheepandgoat
-)
-
-plot(r_regional_herd_shares)
+# reg_wgs_rast <-
+#   reg_wgs %>% 
+#   mutate(regnumber = 1:nrow(.)) %>% 
+#   as(., "Spatial") %>% 
+#   vect() %>% 
+#   rasterize(., template_rast_5arcmin,  field = "regnumber")
+# 
+# plot(reg_wgs_rast)
+# 
+# 
+# 
+# df_regional_herd_shares <- 
+#   extract(r_herd, reg_wgs_vect, fun = "mean", na.rm = T) # reg_wgs_vect in packages script
+# 
+# df_regional_herd_shares <- df_regional_herd_shares %>% 
+#   mutate(subregion = reg_wgs_vect$Region_new,
+#          regnumber = 1:nrow(.))
+# 
+# 
+# df_regional_herd_shares <- 
+#   left_join(reg_wgs, df_regional_herd_shares, by = c("Region_new" = "subregion")) 
+#   
+# 
+# plot(df_regional_herd_shares)
+# 
+# r_regional_herd_shares_dairy <- df_regional_herd_shares %>% 
+#   as(., "Spatial") %>% 
+#   vect() %>% 
+#   rasterize(., template_rast_5arcmin,  field = "dairy_share")
+# 
+# 
+# r_regional_herd_shares_beef <- df_regional_herd_shares %>% 
+#   as(., "Spatial") %>% 
+#   vect() %>% 
+#   rasterize(., template_rast_5arcmin,  field = "beef_share")
+# 
+# 
+# r_regional_herd_shares_sheepandgoat <- df_regional_herd_shares %>% 
+#   as(., "Spatial") %>% 
+#   vect() %>% 
+#   rasterize(., template_rast_5arcmin,  field = "sheep_and_goats_share")
+# 
+# 
+# r_regional_herd_shares <- c(
+#   r_regional_herd_shares_dairy,
+#   r_regional_herd_shares_beef,
+#   r_regional_herd_shares_sheepandgoat
+# )
+# 
+# plot(r_regional_herd_shares)
 
 
 

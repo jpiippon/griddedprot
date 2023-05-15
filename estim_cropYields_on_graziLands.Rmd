@@ -5,15 +5,17 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
-Estimoi paljonko viljasato olisi alueilla, jotka voitaisiin muuntaa laitumesta viljapelloiksi
+Estimate how much the crop protein yield would be in grazing lands that could be converted from grazing lands to croplands
 
 
-# Ladataan data
+
+# Data and packages
 
 ```{r}
 # SI
-SI_5arcmin <- here("Data", "Input", "Zabel22_SI",
-                   "SI_5arcmin_overall_suitability_subset1to17_hist1980_2009_current_irr_areas_applied.tif") %>% #changed
+SI_5arcmin <- 
+  here("Data", "Input", "Zabel22_SI",
+       "SI_5arcmin_overall_suitability_subset1to17_hist1980_2009_current_irr_areas_applied.tif") %>% #changed
   rast()
 
 # Crop protein production yields
@@ -37,7 +39,7 @@ plot(r_protein_and_SI)
 
 # Linear regression model for different countries
 
-In this section, we first create a list of countries with their geometric information. We then use lists to associate relevant rasters with each country. Next, we convert raster data into data frames and apply a linear regression using the lm() function to explain crop protein yield based on suitability. Outliers are filtered out based on the 95th percentile of crop protein values.
+In this section, we first create a list of countries with their geometric information. We then use lists to associate relevant rasters with each country. Next, we convert raster data into data frames and apply a linear regression using the lm() function to explain crop protein yield based on suitability. Outliers are now filtered out based on the 95th percentile of crop protein values --> can be some other outlier detection level as well!
 
 We implement a safe wrapper function for linear regression modeling, which fits a model for each country using the filtered data. The model results are combined with the original country polygons, and the data is cleaned up by selecting relevant columns and unnesting the model results into a single data frame.
 
@@ -45,69 +47,73 @@ We implement a safe wrapper function for linear regression modeling, which fits 
 ```{r}
 all_countries <- adm10_simple_faoadded
 
-# tehdään rasteri kullekin eri maalle (tarvitaan df arvot reg varten) --- tässä listana maapolygonit
+# create list of countries
 country_sf_list <- all_countries %>%
   mutate(country_sf_list = map(ADMIN, ~filter(adm10_simple_faoadded, ADMIN == .x))) %>%
   pull(country_sf_list)
 country_sf_list[[53]] %>% plot() # FI
 
-# tämän listan perustella voidaan maskata rasteri r_protein_and_SI kullekin maalle
+# find a relevant raster for each country by cropping and masking
 country_raster_list <- map(country_sf_list, ~crop_and_mask(r_protein_and_SI, .x))
 country_raster_list[[53]] %>% plot() # FI
 
-# Muunnetaan country_raster_list dataframeksi
-# löytyy koordinaatit sekä crop_protein_kg_ha  ja overall_suitability data joka maalle
+# Convert to data frame
+# Includes coordinates and  crop_protein_kg_ha and  overall_suitability data for each country
 country_df_list <- map(country_raster_list, ~as.data.frame(.x, xy = T) %>% as_tibble())
-country_df_list[[53]] # suomen koordinaatit, crop_protein_kg_ha  ja overall_suitability
+country_df_list[[53]] # FI, crop_protein_kg_ha and overall_suitability
 
 
-# etsitään datasta outlierit joka maalle (taas lista)
-outlier_level_list <- map_dbl(country_df_list, ~quantile(.x$crop_protein_kg_ha, probs = 0.95, na.rm = T)) # 95 or 99?
-outlier_level_list[[53]] # 1243.164 Suomelle
+#  find outliers for every country (list again)
+outlier_level_list <- map_dbl(country_df_list, ~quantile(.x$crop_protein_kg_ha, probs = 0.95, na.rm = T)) #95 or 99? Gabriel: test different alternatives. E.g not removing at all, removing bottom and top 1%, bottom and top 5% and bottom and top 10%
+outlier_level_list[[53]] # 1243.164 FI
 
 
-# Filtteröidään data niin, että outlierit poistettu. Poistetaan myös x ja y
+# Filtter so that outliers are removed. Also remove x and y
 country_df_filtered_list <- map2(country_df_list, outlier_level_list, ~.x %>% 
                                    filter(crop_protein_kg_ha <= .y) %>% # not sure if I should add !is.na(overall_suitability)
                                    dplyr::select(-c(x, y)))
 
-country_df_filtered_list[[53]] # tässä data regressiota varten
+country_df_filtered_list[[53]] # # data for regression
+
+#  test if the distribution is skewed for the right (then gamma distribution could be an option:
+# country_df_filtered_list[[57]][,1] %>% pull() %>% hist()
 
 
 
-
-# tehdään regressio tästä filtteröidystä datasta -- käytetään safe funktiota
+# do regression basd on this filtered data -- use  safe function of purrr to avoind troubles
 # Wrapper function for linear regression
 fit_lm_possibly <- function(data) {
   
   model_output <- lm(crop_protein_kg_ha ~ overall_suitability , data = data) 
   
-  model_coef <- model_output %>% 
+  # model_coef <- model_output %>% 
+  #   broom::tidy() %>%
+  #   dplyr::select(term, estimate, p.value)
+  
+    model_coef <- model_output %>% 
     broom::tidy() %>%
-    dplyr::select(term, estimate, p.value)
+    dplyr::select(term, estimate,  p.value) %>% 
+    pivot_wider(., names_from = term, values_from = c(estimate, p.value))
   
   model_stats <- model_output %>% 
     broom::glance()
   
   # Combine model_coef and model_stats into a single row data frame
   result <- model_coef %>%
-    mutate(r.squared = model_stats$r.squared,
+    mutate(r.squared = model_stats$r.squared, # these from model stats
            adj.r.squared = model_stats$adj.r.squared,
            AIC = model_stats$AIC,
            BIC = model_stats$BIC,
            nobs = model_stats$nobs,
            sigma = model_stats$sigma,
            statistic = model_stats$statistic,
-           p.value = p.value) %>%
-    pivot_wider(names_from = term, values_from = c(estimate, p.value)) %>%
-    rename(estimate_intercept = "estimate_(Intercept)",
-           estimate_suitability = "estimate_overall_suitability",
-           pvalue_suitability = "p.value_overall_suitability") %>%
-    dplyr::select(estimate_intercept, estimate_suitability, pvalue_suitability,
-                  r.squared, adj.r.squared, AIC, BIC, nobs, statistic)
+           p.value_Ftest = model_stats$p.value) %>% 
+    rename(estimate_intercept = "estimate_(Intercept)")
+  
 
   return(result)
 }
+
 
 
 
@@ -118,12 +124,12 @@ fit_lm_safe <- purrr::possibly(fit_lm_possibly, otherwise = NULL)
 
 
 model_list <- map(country_df_filtered_list, fit_lm_safe)
-model_list[[53]] # suomen tulos, mutta kahdella rivillä, olisi parempi jos kaikki olisivat yhdessä rivissä
+model_list[[53]] # results for Finland
 
 
 
 
-# yhdistetään nested country_df_filtered_list polygonien kanssa
+# combine nested country_df_filtered_list with polygons
 all_countries <- all_countries %>% 
   mutate(country_df_filtered_list = country_df_filtered_list,
          model_list = model_list)
@@ -147,27 +153,25 @@ all_countries_cleaned <- all_countries_cleaned %>%
 
 # Use nearest neighbour to give values for countries with insignificant regression values
 
+! Pitää antaa SEKÄ lähimmän merkitsevän maan intercept ETTÄ beta-arvo. Muutoin voi tulla ihan outoja arvoja (esim -500 + 0.2x versus 800 + 0.2x)
+
 distTemp selitys
 
 Matriisin solu (i, j) sisältää etäisyyden ei-merkittävän maan i keskipisteestä merkittävän maan j keskipisteeseen. Esimerkiksi, solu (1, 1) sisältää etäisyyden ensimmäisen ei-merkittävän maan keskipisteestä ensimmäisen merkittävän maan keskipisteeseen, ja solu (1, 2) sisältää etäisyyden ensimmäisen ei-merkittävän maan keskipisteestä toisen merkittävän maan keskipisteeseen, ja niin edelleen.
 
 ```{r}
-# 1) Etsi maat missä malli ei ole merkittävä. Näille maille vain tarvitaan etäisyys (etäisyys pval>0.05 maasta merkitykselliseen maahan)
+# 1) Find countries where the model is not significant. For these countries, only the distance (distance from a country with a F_testp-value > 0.05 to a significant country) is needed.
 
-model_significant <- all_countries_cleaned %>% filter(pvalue_suitability < 0.05) # 124 maata
-model_nonsignificant <- all_countries_cleaned %>% filter(pvalue_suitability >= 0.05 | is.na(pvalue_suitability)) # 78 maata jos non sig otetaan mukaan
-
-
+model_significant <- all_countries_cleaned %>% filter(p.value_Ftest < 0.05) # 125 countries
+model_nonsignificant <- all_countries_cleaned %>% filter(p.value_Ftest >= 0.05 | is.na(p.value_Ftest)) # 77 countries
 
 
-# Noille 78 maalle pitää löytää etäisyydet muihin maihin, joissa on merkityksellinen malli
-# Sitä varten tarvitaan etäisyyksiä. Ennen etäisyyksiä pitää muodostaa keskipisteet joka maalle
+# Find distances for those 78 countries. First, find centroids (needed for distances)
 p_adm0_centroids_st <- all_countries_cleaned %>% 
   dplyr::select(ADMIN, geom) %>% 
   st_centroid()
 
 
-# Näistä etäisyyksistä halutaan valita ensin merkitsevien ja ei merkitsevien mallien rivit --- etäisyydet tarvitaan ainoastaan ei merkitsevistä merkitseviin
 # Filter centroids for countries with significant and non-significant models
 significant_centroids <- p_adm0_centroids_st %>%
   filter(ADMIN %in% model_significant$ADMIN) # 124
@@ -178,55 +182,45 @@ nonsignificant_centroids <- p_adm0_centroids_st %>%
 
 
 
-# laske etäisyys
 # Calculate distances between non-significant and significant model centroids
 distTemp <- st_distance(nonsignificant_centroids, significant_centroids) %>% 
-  as_tibble() # 63 riviä koska 63 nonsignificant_centroids ja 121 saraketta koska 121 merkitsevää maata
-# etäisyydet
-# rivi = ei merkittävien maiden keskipiste   JA
-# sarake = merkitsevien maiden keskipiste  VÄLILLÄ
-
-# Eli (1,1) maan Dhekelia Sovereign Base Area keskipisteestä maan Indonesia keskipisteeseen
-# Eli (1,2) maan Dhekelia Sovereign Base Area keskipisteestä maan Malaysia keskipisteeseen
-
-# muokataan sig ja non sig maanimet matriisiin
-# add sig maat sarakkeisiin
-# dist_tibble <- distTemp %>% 
-#   as_tibble()
-# colnames(dist_tibble) <- significant_centroids$ADMIN
-# 
-# # lisää non sig maat riveille
-# dist_tibble <- dist_tibble %>%
-#   mutate(nonsig_cntr = nonsignificant_centroids$ADMIN) %>% 
-#   dplyr::select(nonsig_cntr, everything())
+  as_tibble() # 77 rows because we have 77 nonsignificant_centroids. 125 cols as we have 125 significant countries
+# Row = centroid of non-significant countries AND
+# Column = centroid of significant countries BETWEEN
+# So (1,1) from the centroid of country Dhekelia Sovereign Base Area to the centroid of country Indonesia
+# So (1,2) from the centroid of country Dhekelia Sovereign Base Area to the centroid of country Malaysia
 
 
-# Etsi lähimmän merkityksellisen mallin indeksi kullekin ei-merkitykselliselle mallille
-closest_significant_indices <- apply(distTemp, 1, which.min) # joka riville pienin etäisyys, eli valitaan merkityksellisistä sarakkeista se (col), josta on lyhim matka kyseiseen merkityksettömään maahan (row)
 
 
-# Liitä lähimmät merkitykselliset mallit ei-merkityksellisiin malleihin
+
+#Find the index of the closest significant model for each non-significant model
+closest_significant_indices <- apply(distTemp, 1, which.min) # for each row, find the minimum distance, and select the significant column (col) with the shortest distance to the non-significant country (row)
+
+
+#Attach the closest significant models to the non-significant models.
 model_nonsignificant_with_closest <- model_nonsignificant %>%
-  mutate(closest_significant_model = model_significant$ADMIN[closest_significant_indices], # max = 120
-         closest_significant_index = closest_significant_indices) # why this is needed?
+  mutate(closest_significant_model = model_significant$ADMIN[closest_significant_indices], 
+         closest_significant_index = closest_significant_indices)
 
-# Yhdistä taulukko "merkitsevät" ei-merkitsevien kanssa, joista kuitenkin tiedetään lähin merkitsevä maa
+# Combine the table "significant" with non-significant ones, for which the closest significant country is known.
 all_countries_with_replacement <- model_significant %>%
   bind_rows(model_nonsignificant_with_closest) 
 
 
 
-# TARKISTA ETTÄ TOIMII OIKEIN -- näyttää toimivan!
-# lisätään intercept
+
+
+# add intercept and filled suitability
 
 updated_regression_results <- all_countries_with_replacement %>%
   mutate(estimate_suitability_filled = 
-           ifelse(pvalue_suitability >= 0.05 | is.na(pvalue_suitability),
-                  model_significant$estimate_suitability[closest_significant_index],
-                                              estimate_suitability),
+           ifelse(p.value_Ftest >= 0.05 | is.na(p.value_Ftest),
+                  model_significant$estimate_overall_suitability[closest_significant_index],
+                                              estimate_overall_suitability),
          
          estimate_intercept_filled = 
-           ifelse(pvalue_suitability >= 0.05 | is.na(pvalue_suitability),
+           ifelse(p.value_Ftest >= 0.05 | is.na(p.value_Ftest),
                   model_significant$estimate_intercept[closest_significant_index],
                                               estimate_intercept))
 
@@ -234,18 +228,30 @@ updated_regression_results <- all_countries_with_replacement %>%
 ```
 
 
-# Explore model performance --- add here info derived in old scripts -- but do this only later if needed
+# Explore model performance
+
+- create different models using different data
+- with different I mean using data where only top 10% of data is removed or where bottom and top 10% of data is removed or where both top and bottom 1% is removed 
+- when only pixels where suitability index SI > 0 are being used in regression
+--> then compare these 3-5 models with the methods proposed in the R book. AIC, BIC and r.squared will help you to select the best model
+
+- also gamma distribution model could be possible:
+gamma_model_FI <- glm(crop_protein_kg_ha ~ overall_suitability, 
+                   data = country_df_filtered_list[[53]], family = Gamma(link = "log"))
+                   
+broom::tidy(gamma_model_FI) # use p.value_overall_suitability instead of p.value_Ftest to determine which model is significant
+broom::glance(gamma_model_FI) # AIC 46110, BIC 46128 but in linear regression those are 47298 and 47316 for Finland so gamma model would be better in this case (the smaller AIC and BIC the better).
 
 ```{r}
 # Original model where non-sig are not filled or replaced
-all_countries_cleaned$adj.r.squared %>% summary() # 2 to 6 % mean/median values
+all_countries_cleaned$adj.r.squared %>% summary() # 2 to 6 % median and mean values
 
-filter(all_countries_cleaned, pvalue_suitability < 0.05) %>% 
-  dplyr::select(adj.r.squared) %>% summary() # 4-9% mean/med values
+model_significant %>% 
+  dplyr::select(adj.r.squared) %>% summary() # 3-9% based on median and mean
 
 ```
 
-# check how predicted protein yield map looks like
+# check how predicted protein yield map looks like (Gabriel just in case you are interested)
 
 
 ```{r}
@@ -257,35 +263,37 @@ r_intercept_filled <-
 
 
 plot(SI_5arcmin)
-r_predicted_protein_yield_kg_ha<- r_intercept_filled + r_suitability_filled * SI_5arcmin
+
+r_predicted_protein_yield_kg_ha <- r_intercept_filled + r_suitability_filled * SI_5arcmin
 
 
 # create mask. First outside cl mask as this is where we need data
-r_predicted_protein_yield_outside_cl_kg_ha <-
-  mask(r_predicted_protein_yield_kg_ha, 
-       r_physical_areas_crops_sum_ha_perpix, inverse = T)
-
-
-  # moreover gl mask needed (otherwise shows all the possible areas)
-r_predicted_protein_yield_outside_cl_but_in_gl_areas_kg_ha <- 
-  mask(r_predicted_protein_yield_outside_cl_kg_ha, 
-       r_fraction_gl_0toNA)
-
-# one more mask to areas where SI > 0
-SI_5arcmin_test <- SI_5arcmin
-SI_5arcmin_test[SI_5arcmin_test < 1] <- NA
-r_predicted_protein_yield_outside_cl_but_in_gl_areas_and_in_suitable_areas_kg_ha <-
-  mask(r_predicted_protein_yield_outside_cl_but_in_gl_areas_kg_ha, SI_5arcmin_test)
-
-summary(r_predicted_protein_yield_outside_cl_but_in_gl_areas_and_in_suitable_areas_kg_ha)
-summary(r_prot_allcrops_sum_kg_ha)
+# r_predicted_protein_yield_outside_cl_kg_ha <-
+#   mask(r_predicted_protein_yield_kg_ha, 
+#        r_physical_areas_crops_sum_ha_perpix, inverse = T)
+# 
+# 
+#   # moreover gl mask needed (otherwise shows all the possible areas)
+# r_predicted_protein_yield_outside_cl_but_in_gl_areas_kg_ha <- 
+#   mask(r_predicted_protein_yield_outside_cl_kg_ha, 
+#        r_fraction_gl_0toNA)
+# 
+# # one more mask to areas where SI > 0
+# SI_5arcmin_test <- SI_5arcmin
+# SI_5arcmin_test[SI_5arcmin_test < 1] <- NA
+# r_predicted_protein_yield_outside_cl_but_in_gl_areas_and_in_suitable_areas_kg_ha <-
+#   mask(r_predicted_protein_yield_outside_cl_but_in_gl_areas_kg_ha, SI_5arcmin_test)
+# 
+# summary(r_predicted_protein_yield_outside_cl_but_in_gl_areas_and_in_suitable_areas_kg_ha)
+# summary(r_prot_allcrops_sum_kg_ha)
 
 pal_protein_lajolla <- scico(n = 6, palette = "lajolla", end = 0.85) 
 
 (plt_crop_protein_predicted <- 
-  create_index_map(r_index = r_predicted_protein_yield_outside_cl_but_in_gl_areas_and_in_suitable_areas_kg_ha, 
+  create_index_map(r_index = r_predicted_protein_yield_kg_ha,
+                     #r_predicted_protein_yield_outside_cl_but_in_gl_areas_and_in_suitable_areas_kg_ha, 
                    tocrs = "ESRI:54030",
-                   index_main_title = "Test estimated crop protein yields outside current croplands",
+                   index_main_title = "Test estimated crop protein yields ", # outside current croplands 
                    index_label = "[kg/ha]",
                    colorpal = pal_protein_lajolla,
                    breakvals = c(0, 10, 50, 100, 250, 500, Inf),

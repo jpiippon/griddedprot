@@ -1,0 +1,284 @@
+---
+title: 'Comparisons: grazing livestock and crops'
+author: "Johannes Piipponen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+
+Data saved to folder Intermediate inputs
+
+
+
+# Calculate livestock contribution to total protein
+
+
+Update: calculated only for current herd structure.
+
+However, old codes below just in case one wants to explore this for different livestock species
+
+Grazing livestock's share of total protein production on agricultural land
+This map illustrates the percentage of protein produced by grazing livestock in relation to the combined protein production from both grazing livestock and the 27 SPAM food crops on agricultural land. It highlights the areas where grazing livestock plays a more significant role in contributing to the total protein production within agricultural systems.
+
+```{r}
+# calculate combined protein that we can get from a cell (combined = protein_grazing_livestock + protein_crops)
+r_protein_combined_kg_perpix <-
+  1000 * classify(r_prot_allcrops_sum_mt_perpix, cbind(NA, 0)) +
+  classify(r_protein_from_065xAGB_kg_perpix$current_herd_str, cbind(NA, 0))
+
+names(r_protein_combined_kg_perpix) <- "combined_protein"
+
+
+
+
+# Grazing livestock's share of total protein production on agricultural land
+# share of the total protein that originates from livestock
+  ## first convert NA to 0
+r_protein_from_AGB_current_str_kg_perpix_NAto0 <- 
+  classify(r_protein_from_065xAGB_kg_perpix$current_herd_str, cbind(NA, 0))
+
+r_share_of_total_protein_livestock <- 100* (r_protein_from_AGB_current_str_kg_perpix_NAto0 / r_protein_combined_kg_perpix)
+plot(r_share_of_total_protein_livestock, main = "Contribution of livestock to total protein production")
+
+
+# --------------------------------------------------- same masked to cl
+  ## cropland mask 
+  ## share of livestock masked to croplands to show that on cropland areas livestock produce only a little
+r_share_of_total_protein_livestock_croplandmask <-
+  mask(r_share_of_total_protein_livestock, 
+       r_fraction_cl_0toNA)
+
+plot(r_share_of_total_protein_livestock_croplandmask, 
+     main = "Contribution of livestock to total protein production on croplands")
+
+
+
+# ----------------------- further masked to cl where SI extremely low (below 10)
+
+  ## SI below 10 mask AND croplandmask
+SI_5arcmin_below10 <- SI_5arcmin
+SI_5arcmin_below10[SI_5arcmin_below10 >= 10] <- NA
+plot(SI_5arcmin_below10, main = "SI below 10")
+
+SI_5arcmin_below10_croplandmask <- mask(SI_5arcmin_below10, r_fraction_cl_0toNA)
+plot(SI_5arcmin_below10_croplandmask, main = "SI below 10 on croplands")
+
+r_share_of_total_protein_livestock_SIbelow10mask_croplandmask <-
+  mask(r_share_of_total_protein_livestock, SI_5arcmin_below10_croplandmask)
+
+plot(r_share_of_total_protein_livestock_SIbelow10mask_croplandmask, 
+     main = "Contribution of livestock to total protein production on croplands where SI < 10")
+```
+
+
+# Calculate livestock contribution to total energy
+
+```{r}
+r_energy_combined_MM_perpix <-
+  classify(r_kcal_from_065xAGB_MM_perpix$current_herd_str_MMkcal_perpix, cbind(NA, 0)) +
+  classify(r_kcal_allcrops_sum_MM_perpix, cbind(NA, 0))
+names(r_energy_combined_MM_perpix) <- "combined_energy"
+
+
+
+# Grazing livestock's share of total kcal production on agricultural land OR  share of the total energy that originates from livestock
+r_share_of_total_energy_livestock <- 
+  100* (classify(r_kcal_from_065xAGB_MM_perpix$current_herd_str_MMkcal_perpix, cbind(NA,0)) / 
+          r_energy_combined_MM_perpix)
+plot(r_share_of_total_energy_livestock, main = "Contribution of livestock to total energy production")
+
+
+
+# --------------------------------------------------- same masked to cl
+r_share_of_total_energy_livestock_croplandmask <-
+  mask(r_share_of_total_energy_livestock, 
+       r_fraction_cl_0toNA)
+
+# ----------------------- further masked to cl where SI extremely low (below 10)
+
+  ## SI below 10 mask AND croplandmask
+r_share_of_total_energy_livestock_SIbelow10mask_croplandmask <-
+  mask(r_share_of_total_energy_livestock,
+       SI_5arcmin_below10_croplandmask)
+
+```
+# Protein kg per ha for figures
+
+```{r}
+# total combined protein per ha
+r_protein_combined_kg_ha <-
+  r_protein_combined_kg_perpix /
+  (cellSize(r_protein_combined_kg_perpix, unit ="ha")/
+  r_fraction_gl_cl_total_0toNA)
+
+
+# total combined protein per ha - croplandmask
+r_protein_combined_kg_ha_croplandmask <-
+  mask(r_protein_combined_kg_ha, 
+       r_fraction_cl_0toNA)
+
+# total combined protein per ha - outside croplandmask -- same as only livestock here
+r_protein_combined_kg_ha_outside_croplands <-
+  mask(r_protein_from_065xAGB_kg_ha$current_herd_str, # could be also r_protein_combined_kg_ha but this is more correct
+       r_fraction_cl_0toNA, inverse = T)
+
+# further masked to cl where SI extremely low (below 10)
+r_protein_combined_kg_ha_SIbelow10mask_croplandmask <-
+  mask(r_protein_combined_kg_ha,
+       SI_5arcmin_below10_croplandmask)
+plot(r_protein_combined_kg_ha_SIbelow10mask_croplandmask)
+
+
+
+```
+
+
+
+# Global sums 
+
+```{r}
+# Total combined protein
+global(r_protein_combined_kg_perpix, "sum", na.rm = T)/1e9 # 285
+
+# Total combined proteinon croplands
+r_protein_combined_kg_perpix_croplandmask <-
+  mask(r_protein_combined_kg_perpix, 
+       r_fraction_cl_0toNA)
+global(r_protein_combined_kg_perpix_croplandmask, "sum", na.rm = T)/1e9 # 281
+
+# Total combined protein on croplands where SI < 10
+r_protein_combined_kg_perpix_SIbelow10mask_croplandmask <-
+  mask(r_protein_combined_kg_perpix, 
+       SI_5arcmin_below10_croplandmask)
+global(r_protein_combined_kg_perpix_SIbelow10mask_croplandmask, "sum", na.rm = T)/1e9 # 6
+
+# Total combined protein outside croplands -- this should be same as amount of protein current herd produces outside cl
+r_protein_combined_kg_perpix_outside_croplands <-
+    mask(r_protein_combined_kg_perpix, 
+         r_fraction_cl_0toNA, inverse = T)
+global(r_protein_combined_kg_perpix_outside_croplands, "sum", na.rm = T)/1e9 # 4
+
+mask(r_protein_from_065xAGB_kg_perpix$current_herd_str,
+     r_fraction_cl_0toNA, inverse = T) %>% 
+  global(., "sum", na.rm = T)/1e9 # 4
+
+
+
+
+# ---------------------------------------------------- energy
+
+```
+
+
+
+##################### ------------------------------------------------------------------------------------------------- ####### old
+
+```{r}
+# # ---------------------------------------------------- calculate per pixel 
+# r_protein_combined_kg_perpix_when_dairy <-
+#     app(c(1000 * r_prot_allcrops_sum_mt_perpix, r_protein_from_065xAGB_kg_perpix$dairy), 
+#            fun = sum, na.rm = T) # must use app as gl and cl not overlapping. Alternatively:
+# # r_protein_combined_kg_perpix_when_dairy2 <-
+# #   1000 * classify(r_prot_allcrops_sum_mt_perpix, cbind(NA, 0)) +
+# #   classify( r_protein_from_AGB_kg_perpix$dairy, cbind(NA, 0))
+# 
+# 
+# r_protein_combined_kg_perpix_when_beef <-
+#     app(c(1000 * r_prot_allcrops_sum_mt_perpix, r_protein_from_065xAGB_kg_perpix$beef), 
+#            fun = sum, na.rm = T)
+# 
+# r_protein_combined_kg_perpix_when_sheepgoats <-
+#     app(c(1000 * r_prot_allcrops_sum_mt_perpix, r_protein_from_065xAGB_kg_perpix$sheep_and_goats), 
+#            fun = sum, na.rm = T)
+# 
+# 
+# r_protein_combined_kg_perpix <-
+#   c(r_protein_combined_kg_perpix_when_dairy,
+#     r_protein_combined_kg_perpix_when_beef,
+#     r_protein_combined_kg_perpix_when_sheepgoats)
+# names(r_protein_combined_kg_perpix) <- c("when Dairy cattle", "when Beef cattle", "when Sheep and goats")
+# 
+# 
+# 
+# summary(r_protein_from_065xAGB_kg_perpix)
+# summary(1000 * r_prot_allcrops_sum_mt_perpix)
+# summary(r_protein_combined_kg_perpix)
+
+
+```
+
+
+# Grazing livestock's share of total protein production on agricultural land
+
+This map illustrates the percentage of protein produced by grazing livestock in relation to the combined protein production from both grazing livestock and the 27 SPAM food crops on agricultural land. It highlights the areas where grazing livestock plays a more significant role in contributing to the total protein production within agricultural systems.
+
+
+```{r}
+# 
+# # share of the total protein that originates from livestock
+#   ## first convert NA to 0
+# r_protein_from_AGB_kg_perpix_NAto0 <- classify(r_protein_from_065xAGB_kg_perpix, cbind(NA, 0))
+# r_share_of_total_protein_livestock <- 100* (r_protein_from_AGB_kg_perpix_NAto0 / r_protein_combined_kg_perpix)
+# plot(r_share_of_total_protein_livestock, main = "Contribution of livestock to total protein production")
+# 
+# 
+# # share of the total protein that originates from crops 
+#   ## first convert NA to 0
+# # r_prot_allcrops_sum_kg_perpix_NAto0 <- 1000 * classify(r_prot_allcrops_sum_mt_perpix, cbind(NA, 0))
+# # r_share_of_total_protein_crops <- 100* (r_prot_allcrops_sum_kg_perpix_NAto0 / r_protein_combined_kg_perpix) 
+# # plot(r_share_of_total_protein_crops)
+# # 
+# #  ## test
+# # mean(r_share_of_total_protein_livestock + r_share_of_total_protein_crops) # should be 100
+# 
+# 
+# 
+# 
+# 
+# # --------------------------------------------------- same masked to cl
+#   ## cropland mask 
+#   ## share of livestock masked to croplands to show that on cropland areas livestock produce only a little
+# r_share_of_total_protein_livestock_croplandmask <-
+#   mask(r_share_of_total_protein_livestock, 
+#        r_fraction_cl_0toNA)
+# 
+# plot(r_share_of_total_protein_livestock_croplandmask, main = "Contribution of livestock to total protein production on croplands")
+# 
+# 
+# 
+# 
+# # ----------------------- further masked to cl where SI extremely low (below 10)
+# 
+#   ## SI below 10 mask AND croplandmask
+# SI_5arcmin_below10 <- SI_5arcmin
+# SI_5arcmin_below10[SI_5arcmin_below10 >= 10] <- NA
+# plot(SI_5arcmin_below10, main = "SI below 10")
+# 
+# SI_5arcmin_below10_croplandmask <- mask(SI_5arcmin_below10, r_fraction_cl_0toNA)
+# plot(SI_5arcmin_below10_croplandmask, main = "SI below 10 on croplands")
+# 
+# r_share_of_total_protein_livestock_SIbelow10mask_croplandmask <-
+#   mask(r_share_of_total_protein_livestock, SI_5arcmin_below10_croplandmask)
+# 
+# plot(r_share_of_total_protein_livestock_SIbelow10mask_croplandmask, 
+#      main = "Contribution of livestock to total protein production on croplands where SI < 10")
+# 
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
