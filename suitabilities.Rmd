@@ -10,6 +10,7 @@ output: html_document
 
 ! Koeta laskea uusi extrasato käyttäen perpix arvoja - sitten ei tartte maskata top99% arvoja pois
  --> tuskin vaikuttaa lopputulokseen mutta silti oikeaoppisempaa
+ --> jos hankala, tee sen jälkeen kun olet saanut tuloksia
 
 
 
@@ -20,6 +21,8 @@ Rasteri siis näyttää kuinka suuri osuus solusta on kussakin kategoriassa
 
 ```{r}
 # get rasters we created earlier
+
+# Chunk 2
 r_SIbased_unrestricted_cropland_fraction <-
   here("Data", "Intermediate_input", "Fraction_of_5arcmin_cell_where_SI_ge_threshold.tif") %>%
   rast()
@@ -29,6 +32,7 @@ r_SIbased_unrestricted_cropland_ha_perpix <-
   rast()
 
 
+# Chunk 3
 r_SIbased_restricted_max_cropland_fraction <-
   here("Data", "Intermediate_input", "Fraction_of_cropland_max_when_SI_ge_threshold.tif") %>%
   rast()
@@ -36,7 +40,6 @@ r_SIbased_restricted_max_cropland_fraction <-
 r_SIbased_restricted_max_cropland_fraction_NAto0 <-
   here("Data", "Intermediate_input", "Fraction_of_cropland_max_when_SI_ge_threshold_NAto0.tif") %>%
   rast()
-
 
 r_SIbased_restricted_max_cropland_ha_perpix <-
   here("Data", "Intermediate_input","max_amount_of_cropland_therecouldbe_whenSIgeThreshold_ha_perpix.tif") %>%
@@ -47,9 +50,35 @@ r_SIbased_restricted_max_cropland_ha_perpix_NAto0 <-
        "max_amount_of_cropland_therecouldbe_whenSIgeThreshold_ha_perpix_NAto0.tif") %>%
   rast()
 
-# 
-#  ---------------- some more rasters
-  # can plot chunk 5 after these three rasters
+
+# Chunk 4
+r_potential_cropland_expansion_ha_perpix- <-
+  here("Data", "Intermediate_input", "r_potential_cropland_expansion_ha_perpix.tif") %>% 
+  rast()
+
+r_potential_cropland_expansion_croplandmask_ha_perpix <-
+  here("Data", "Intermediate_input", "r_potential_cropland_expansion_croplandmask_ha_perpix.tif") %>% 
+  rast()
+
+r_potential_cropland_expansion_outside_croplands_ha_perpix <-
+  here("Data", "Intermediate_input", "r_potential_cropland_expansion_outside_croplands_ha_perpix.tif") %>% 
+  rast()
+
+
+r_potential_cropland_expansion_fraction <-
+  here("Data", "Intermediate_input", "r_potential_cropland_expansion_fraction.tif") %>% 
+  rast()
+
+r_potential_cropland_expansion_croplandmask_fraction <- 
+  here("Data", "Intermediate_input", "r_potential_cropland_expansion_croplandmask_fraction.tif") %>% 
+  rast()
+
+r_potential_cropland_expansion_outside_croplands_fraction <- 
+  here("Data", "Intermediate_input", "r_potential_cropland_expansion_outside_croplands_fraction.tif") %>% 
+  rast()
+
+
+# Chunk 5
 r_cropland_expansion_percent <-
   here("Data", "Intermediate_input", "r_cropland_expansion_percent.tif") %>%
   rast()
@@ -64,22 +93,29 @@ r_cropland_expansion_percent_outside_croplands <-
 
 
 
-  # can plot chunk 6 after these
-# 
-# 
-# r_grazingland_reduction_percent <-
-#   here("Data", "Intermediate_input","r_grazingland_reduction_percent.tif") %>%
-#   rast()
-# 
-# r_grazingland_reduction_percent_croplandmask <-
-#   here("Data", "Intermediate_input","r_grazingland_reduction_percent_croplandmask.tif") %>%
-#   rast()
-# 
-# r_grazingland_reduction_percent_outside_croplands <-
-#   ("Data", "Intermediate_input","r_grazingland_reduction_percent_outside_croplands.tif") %>%
-#   rast()
-# 
-# 
+# Chunk 6
+
+r_grazingland_reduction_percent <-
+  here("Data", "Intermediate_input",
+       "r_grazingland_reduction_percent.tif") %>% 
+  rast()
+
+r_grazingland_reduction_percent_croplandmask <-
+  here("Data", "Intermediate_input","r_grazingland_reduction_percent_croplandmask.tif") %>% 
+  rast()
+
+r_grazingland_reduction_percent_outside_croplands <-
+  here("Data", "Intermediate_input","r_grazingland_reduction_percent_outside_croplands.tif") %>% 
+  rast()
+
+
+
+# Chunk 7
+
+
+
+
+
 # 
 # 
 # r_optimized_protein_yield_whendairy_combined_kg_perpix <-
@@ -119,7 +155,7 @@ threshold_values <- 0:99
 
 # to make thigs even easier
 template_rast_5arcmin_cellsize <- cellSize(template_rast_5arcmin, unit = "ha")
-options(scipen = 999)
+
 ```
 
 
@@ -391,8 +427,9 @@ ex_tibble
 
 
 
+
+
 # Chunk 4 Potential cropland expansion in current production areas and beyond 
-Hectares per pix and fractions of cell here
 
 r_potential_cropland_expansion_ha_perpix 
 -  rasteri kuvaa potentiaalista viljelymaan laajentumista hehtaareina jokaiselle pikselille laskettuna maksimaalisen viljelysmaan ja nykyisen viljelysmaan välisenä erona.
@@ -425,33 +462,35 @@ r_potential_cropland_expansion_ha_perpix <-
 
 
 # --------------------------------------------------------------- hectares (mask) 
+# Cropland expansion on cells where there is cropland
+r_potential_cropland_expansion_croplandmask_ha_perpix <-
+  mask(r_potential_cropland_expansion_ha_perpix, 
+       r_physical_areas_crops_sum_ha_perpix)
+
 # Cropland expansion on cells where SPAM crops are not growing
 r_potential_cropland_expansion_outside_croplands_ha_perpix  <-
   mask(r_potential_cropland_expansion_ha_perpix, 
        r_physical_areas_crops_sum_ha_perpix, inverse = T)
 
 
-# Cropland expansion on cells where there is cropland
-r_potential_cropland_expansion_croplandmask_ha_perpix <-
-  mask(r_potential_cropland_expansion_ha_perpix, 
-       r_physical_areas_crops_sum_ha_perpix)
-
-
 
 writeRaster(r_potential_cropland_expansion_ha_perpix, filename = 
-              here("Data", "Intermediate_input", "r_potential_cropland_expansion_ha_perpix.tif"))
+              here("Data", "Intermediate_input", "r_potential_cropland_expansion_ha_perpix.tif"),
+            overwrite =T)
 
-writeRaster(r_potential_cropland_expansion_outside_croplands_ha_perpix, filename = 
-              here("Data", "Intermediate_input", "r_potential_cropland_expansion_outside_croplands_ha_perpix.tif"))
 
 writeRaster(r_potential_cropland_expansion_croplandmask_ha_perpix, filename = 
-              here("Data", "Intermediate_input", "r_potential_cropland_expansion_croplandmask_ha_perpix.tif"))
+              here("Data", "Intermediate_input", "r_potential_cropland_expansion_croplandmask_ha_perpix.tif"),
+            overwrite =T)
 
+
+writeRaster(r_potential_cropland_expansion_outside_croplands_ha_perpix, filename = 
+              here("Data", "Intermediate_input", "r_potential_cropland_expansion_outside_croplands_ha_perpix.tif"),
+            overwrite =T)
 
 
 
 # ----------------------------------------------------- fractions (was ha above)
-
 # Etsi fraction jossa voitais tuottaa lisää. Eli potentiaalinen - nykyinen ala. 
 # r_SIbased_restricted_max_cropland_fraction_NAto0 vai r_SIbased_restricted_max_cropland_fraction?
 r_potential_cropland_expansion_fraction  <-
@@ -480,14 +519,17 @@ r_potential_cropland_expansion_outside_croplands_fraction <-
 
 
 writeRaster(r_potential_cropland_expansion_fraction, filename = 
-              here("Data", "Intermediate_input", "r_potential_cropland_expansion_fraction.tif"))
+              here("Data", "Intermediate_input", "r_potential_cropland_expansion_fraction.tif"),
+            overwrite =T)
 
 
 writeRaster(r_potential_cropland_expansion_croplandmask_fraction, filename = 
-              here("Data", "Intermediate_input", "r_potential_cropland_expansion_croplandmask_fraction.tif"))
+              here("Data", "Intermediate_input", "r_potential_cropland_expansion_croplandmask_fraction.tif"),
+            overwrite =T)
 
 writeRaster(r_potential_cropland_expansion_outside_croplands_fraction, filename = 
-              here("Data", "Intermediate_input", "r_potential_cropland_expansion_outside_croplands_fraction.tif"))
+              here("Data", "Intermediate_input", "r_potential_cropland_expansion_outside_croplands_fraction.tif"),
+            overwrite =T)
 
 
 ```
@@ -497,6 +539,11 @@ writeRaster(r_potential_cropland_expansion_outside_croplands_fraction, filename 
 
 
 # Chunk 5 Potential for increased agricultural production and cropland expansion
+
+r_cropland_expansion_percent <-
+  100 * r_potential_cropland_expansion_fraction / 
+  r_fraction_cl_NAto0 
+ !!!!!!! meneekö väärin kun on nollalla jako? Missä Inf arvot haittaavat?
 
 ```{r}
 # ------------------------------------ How much cropland could increase in %?
@@ -758,7 +805,7 @@ eläinproteiinin uusi sato  alkuperäinen sato * (0.40 - (0.45-0.30))/0.40, joss
 
 ############################## new
 r_protein_decrease_basedOnSI_dairy_kg_perpix <-
-  r_protein_from_065xAGB_kg_ha$dairy *
+  r_protein_from_065xAGB_kg_ha$dairy * # ------------------------- vaihda current herd structures
   cellSize(r_protein_from_065xAGB_kg_ha$dairy, unit = "ha") *
   r_potential_cropland_expansion_fraction
 

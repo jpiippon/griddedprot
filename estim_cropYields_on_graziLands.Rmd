@@ -31,10 +31,40 @@ names(r_protein_and_SI) <- c("crop_protein_kg_ha", "overall_suitability") # if n
 
 plot(r_protein_and_SI)
 
+
 #library(modelr)
 ```
 
 
+# Check correlations
+
+```{r}
+# check the data
+test1 <- r_prot_allcrops_sum_kg_ha
+test1[test1 >826.4333] <- NA
+r_protein_and_SI_test <- c(test1, SI_5arcmin)
+
+pairs(r_protein_and_SI_test) # 0.16 
+
+df_protein_and_SI_test <- as.data.frame(r_protein_and_SI_test, xy = T)
+df_protein_and_SI_test <- df_protein_and_SI_test %>%
+  na.omit()
+
+cor(df_protein_and_SI_test %>%  dplyr::select(-x,-y)) # 0.15
+
+
+
+# plot --- no very visible linear trend
+ggplot(df_protein_and_SI_test[sample(nrow(df_protein_and_SI_test), 1e4), ], 
+       aes(x = crop_protein_kg_ha , y = overall_suitability_subset1to17)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Scatter Plot",
+       x = "Crop Protein (kg/ha)",
+       y = "Overall Suitability") +
+  theme_minimal()
+
+```
 
 
 # Linear regression model for different countries
@@ -58,9 +88,8 @@ country_raster_list <- map(country_sf_list, ~crop_and_mask(r_protein_and_SI, .x)
 country_raster_list[[53]] %>% plot() # FI
 
 # Convert to data frame
-# Includes coordinates and  crop_protein_kg_ha and  overall_suitability data for each country
 country_df_list <- map(country_raster_list, ~as.data.frame(.x, xy = T) %>% as_tibble())
-country_df_list[[53]] # FI, crop_protein_kg_ha and overall_suitability
+country_df_list[[53]] # FI
 
 
 #  find outliers for every country (list again)
@@ -153,11 +182,7 @@ all_countries_cleaned <- all_countries_cleaned %>%
 
 # Use nearest neighbour to give values for countries with insignificant regression values
 
-! Pitää antaa SEKÄ lähimmän merkitsevän maan intercept ETTÄ beta-arvo. Muutoin voi tulla ihan outoja arvoja (esim -500 + 0.2x versus 800 + 0.2x)
 
-distTemp selitys
-
-Matriisin solu (i, j) sisältää etäisyyden ei-merkittävän maan i keskipisteestä merkittävän maan j keskipisteeseen. Esimerkiksi, solu (1, 1) sisältää etäisyyden ensimmäisen ei-merkittävän maan keskipisteestä ensimmäisen merkittävän maan keskipisteeseen, ja solu (1, 2) sisältää etäisyyden ensimmäisen ei-merkittävän maan keskipisteestä toisen merkittävän maan keskipisteeseen, ja niin edelleen.
 
 ```{r}
 # 1) Find countries where the model is not significant. For these countries, only the distance (distance from a country with a F_testp-value > 0.05 to a significant country) is needed.
@@ -224,7 +249,7 @@ updated_regression_results <- all_countries_with_replacement %>%
                   model_significant$estimate_intercept[closest_significant_index],
                                               estimate_intercept))
 
-
+#View(updated_regression_results)
 ```
 
 
@@ -241,6 +266,7 @@ gamma_model_FI <- glm(crop_protein_kg_ha ~ overall_suitability,
                    
 broom::tidy(gamma_model_FI) # use p.value_overall_suitability instead of p.value_Ftest to determine which model is significant
 broom::glance(gamma_model_FI) # AIC 46110, BIC 46128 but in linear regression those are 47298 and 47316 for Finland so gamma model would be better in this case (the smaller AIC and BIC the better).
+
 
 ```{r}
 # Original model where non-sig are not filled or replaced

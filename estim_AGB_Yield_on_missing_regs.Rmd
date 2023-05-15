@@ -5,79 +5,161 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
-! valitse sigman perusteella mikä malli merkitsevä! Sitten hae model_list tms avulla lähin merkityksellinen malli
-! kokeile voisko mischanthus jättää pois - paraneeko r¨2 tai merkitsevien maiden lkm?
-! tai laita Gabriel kokeilemaan, koeta vain saada lopputulos itse
+# Estimate protein yields animals can derive from AGB
+
+Try to find the best model using AIC, BIC and r^2 metrics
+Maybe important to include only pixels where suitability > 0? Worth trying anyway
+
+! Now I have used the same names as I used when evaluating crop protein yields -- should be changed to something that makes more sense
+! gamma distribution not needed for this AGBprotein scriot - gamma potentially useful only for crops
 
 # Load data
 
 ```{r}
-# AGB protein per ha ---------- should this be yield instead? --> if works use protein
-r_protein_from_065xAGB_kg_ha <- # or this should represent average herd strucutres
+# AGB protein per ha 
+r_protein_from_065xAGB_kg_ha <- 
   here("Data", "Intermediate_input","r_protein_from_065xAGB_kg_ha.tif") %>% 
   rast()
+
+names(r_protein_from_065xAGB_kg_ha) <-  c("dairy", "beef", "sheep_and_goats", "animal_protein_kg_ha") 
 
 SI_grasses_5arcmin <- 
   here("Data", "Input", "from_harddrive",
        "SI_plants19_20_21_5arcmin.tif") %>% 
   rast()
 
-# test with current herd structures
-r_protein_and_SI <- c(r_protein_from_065xAGB_kg_ha$current_herd_str,
-                      SI_grasses_5arcmin)
+SI_grasses_5arcmin_mean  <- mean(SI_grasses_5arcmin, na.rm = T)
 
+# test with current herd structures
+r_protein_and_SI <- c(r_protein_from_065xAGB_kg_ha$animal_protein_kg_ha,
+                      SI_grasses_5arcmin_mean)
 
 plot(SI_grasses_5arcmin)
+plot(r_protein_and_SI)
+
+names(r_protein_and_SI) <- c("animal_protein_kg_ha", "suitability")
+
+# or if running regression using all grass species as independent variables
+# r_protein_and_SI <- c(r_protein_from_065xAGB_kg_ha$animal_protein_kg_ha,
+#                       SI_grasses_5arcmin)
+# 
+# 
+# names(r_protein_and_SI) <- c("animal_protein_kg_ha", "SI_plant19", "SI_plant20", "SI_plant21")
+
+```
+
+# Explore correlations
+
+```{r}
+# different grass species?
+pairs(SI_grasses_5arcmin) # too high correlation amongst them?
+
+df_protein_and_SI_test <- 
+  as.data.frame( c(r_protein_from_065xAGB_kg_ha$animal_protein_kg_ha, SI_grasses_5arcmin), 
+                 xy = T)
+df_protein_and_SI_test <- df_protein_and_SI_test %>%
+  na.omit()
+
+correlation_matrix <- cor(df_protein_and_SI_test %>%  dplyr::select(-x,-y)) 
+correlation_matrix
+# especially plant 20 and 21 have very strong correlation (Switchgrass and Reed canary grass)
+
+# check multicollinearity with VIF
+library(car)
+vif_values <- 
+  vif(lm(animal_protein_kg_ha  ~ plantspecific_suitability_19 + plantspecific_suitability_20+ plantspecific_suitability_21,
+         data = df_protein_and_SI_test))
+vif_values # the situation might be different in different countries. 
+
+
+library(corrplot)
+corrplot(correlation_matrix, method = "circle")
+
+
+
+# mean of grass suitabilities
+pairs(r_protein_and_SI)
+
+df_protein_and_SI_test_mean <- 
+  r_protein_and_SI %>% 
+  as.data.frame(., xy = T) %>% 
+  na.omit() 
+  
+correlation_matrix_mean <-
+  df_protein_and_SI_test_mean %>% 
+  dplyr::select(-x,-y) %>% 
+  cor()
+correlation_matrix_mean # 0.42
+
+
+
+# plot ---- maybe some kind of linearity?
+ggplot(df_protein_and_SI_test_mean[sample(nrow(df_protein_and_SI_test_mean), 1e4), ], 
+       aes(x = animal_protein_kg_ha , y = suitability)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Scatter Plot",
+       x = "Animal Protein (kg/ha)",
+       y = "Mean Suitability") +
+  theme_minimal()
+
 ```
 
 
 # Linear regression model for different countries
 
+
 ```{r}
 all_countries <- adm10_simple_faoadded
 
-# tehdään rasteri kullekin eri maalle (tarvitaan df arvot reg varten) --- tässä listana maapolygonit
+# create list of countries
 country_sf_list <- all_countries %>%
   mutate(country_sf_list = map(ADMIN, ~filter(adm10_simple_faoadded, ADMIN == .x))) %>%
   pull(country_sf_list)
 country_sf_list[[53]] %>% plot() # FI
 
-# tämän listan perustella voidaan maskata rasteri r_protein_and_SI kullekin maalle
+# find a relevant raster for each country by cropping and masking
 country_raster_list <- map(country_sf_list, ~crop_and_mask(r_protein_and_SI, .x))
 country_raster_list[[53]] %>% plot() # FI
 
-# Muunnetaan country_raster_list dataframeksi
-# löytyy koordinaatit sekä crop_protein_kg_ha  ja overall_suitability data joka maalle
+# Convert to data frame
 country_df_list <- map(country_raster_list, ~as.data.frame(.x, xy = T) %>% as_tibble())
-country_df_list[[53]] # suomen koordinaatit, current_herd_str_protein_kg_ha  ja SI for 3 grasses
+country_df_list[[53]] # suomen koordinaatit, animal_protein_kg_ha_protein_kg_ha  ja SI for 3 grasses
 
 
-# etsitään datasta outlierit joka maalle (taas lista)
-outlier_level_list <- map_dbl(country_df_list, ~quantile(.x$current_herd_str,
+#  find outliers for every country (list again)
+outlier_level_list <- map_dbl(country_df_list, ~quantile(.x$animal_protein_kg_ha ,
                                                          probs = 0.95, na.rm = T)) # 95 or 99?
 outlier_level_list[[53]] 
 
 
 
 
-# Filtteröidään data niin, että outlierit poistettu. Poistetaan myös x ja y
+# Filtter so that outliers are removed. Also remove x and y
 country_df_filtered_list <- 
   map2(country_df_list, 
-       outlier_level_list, ~.x %>% filter(current_herd_str <= .y) %>% # not sure if I should add !is.na(overall_suitability) --> varmaan jos SI == 0 nii myös pois
+       outlier_level_list, ~.x %>% filter(animal_protein_kg_ha  <= .y) %>% 
+         
+         
+         # maybe add SI >  0? If it improves the model..
                                    dplyr::select(-c(x, y)))
 
-country_df_filtered_list[[53]] # tässä data regressiota varten
+country_df_filtered_list[[53]] #  data for regression
 
 
 
 
-# tehdään regressio tästä filtteröidystä datasta -- käytetään safe funktiota
+# do regression basd on this filtered data -- use  safe function of purrr to avoind troubles
 # Wrapper function for linear regression
 fit_lm_possibly <- function(data) {
   
-  model_output <- 
-    lm(current_herd_str ~ plantspecific_suitability_19 + plantspecific_suitability_20 +
-                       plantspecific_suitability_21, data = data) 
+  model_output <-
+    lm(animal_protein_kg_ha  ~ suitability, data = data)
+  
+  # in case one wants to try using regression using separate SI for different grasses
+  # model_output <-
+  #   lm(animal_protein_kg_ha ~ SI_plant19  + SI_plant20  + SI_plant21, data = data)
+  
   
   model_coef <- model_output %>% 
     broom::tidy() %>%
@@ -97,8 +179,9 @@ fit_lm_possibly <- function(data) {
            nobs = model_stats$nobs,
            sigma = model_stats$sigma,
            statistic = model_stats$statistic,
-           p.value_Ftest = model_stats$p.value)
-  # 
+           p.value_Ftest = model_stats$p.value) %>% 
+     rename(estimate_intercept = "estimate_(Intercept)")
+  
   return(result)
 }
 
@@ -111,7 +194,7 @@ fit_lm_safe <- purrr::possibly(fit_lm_possibly, otherwise = NULL)
 
 
 model_list <- map(country_df_filtered_list, fit_lm_safe)
-model_list[[53]] # suomen tulos, mutta yhdellä rivillä
+model_list[[53]] # FI results
 
 
 # yhdistetään nested country_df_filtered_list polygonien kanssa
@@ -133,21 +216,111 @@ all_countries_cleaned <- all_countries_cleaned %>%
 
 #View(all_countries_cleaned)
 
-summary(all_countries_cleaned$p.value_plantspecific_suitability_19)
-summary(all_countries_cleaned$p.value_plantspecific_suitability_20)
-summary(all_countries_cleaned$p.value_plantspecific_suitability_21)
 
 
 
 filter(all_countries_cleaned, p.value_Ftest < 0.05) %>% 
-  dplyr::select(adj.r.squared) %>% summary() # mean 0.23 median 0,20
+  dplyr::select(adj.r.squared) %>% summary() # mean 0.17 median 0.11 when mean of grass SIs used
 ```
 
 # Use nearest neighbour to give values for countries with insignificant regression values
 
 ```{r}
-model_significant <- all_countries_cleaned %>% filter(pvalue_suitability < 0.05) # 125 maata
-model_nonsignificant <- all_countries_cleaned %>% filter(pvalue_suitability >= 0.05 | is.na(pvalue_suitability))
+model_significant <- all_countries_cleaned %>% 
+  filter(p.value_Ftest < 0.05) # 145 countries
+model_nonsignificant <- all_countries_cleaned %>% 
+  filter(p.value_Ftest >= 0.05 | is.na(p.value_Ftest)) # 57
+
+
+
+
+# Find distances for those 78 countries. First, find centroids (needed for distances)
+p_adm0_centroids_st <- all_countries_cleaned %>% 
+  dplyr::select(ADMIN, geom) %>% 
+  st_centroid()
+
+
+# Filter centroids for countries with significant and non-significant models
+significant_centroids <- p_adm0_centroids_st %>%
+  filter(ADMIN %in% model_significant$ADMIN) 
+
+nonsignificant_centroids <- p_adm0_centroids_st %>%
+  filter(ADMIN %in% model_nonsignificant$ADMIN) 
+
+
+
+
+# Calculate distances between non-significant and significant model centroids
+distTemp <- st_distance(nonsignificant_centroids, significant_centroids) %>% 
+  as_tibble() # 77 rows because we have 77 nonsignificant_centroids. 125 cols as we have 125 significant countries
+# Row = centroid of non-significant countries AND
+# Column = centroid of significant countries BETWEEN
+# So (1,1) from the centroid of country Dhekelia Sovereign Base Area to the centroid of country Indonesia
+# So (1,2) from the centroid of country Dhekelia Sovereign Base Area to the centroid of country Malaysia
+
+
+
+
+
+#Find the index of the closest significant model for each non-significant model
+closest_significant_indices <- apply(distTemp, 1, which.min) # for each row, find the minimum distance, and select the significant column (col) with the shortest distance to the non-significant country (row)
+
+
+#Attach the closest significant models to the non-significant models.
+model_nonsignificant_with_closest <- model_nonsignificant %>%
+  mutate(closest_significant_model = model_significant$ADMIN[closest_significant_indices], 
+         closest_significant_index = closest_significant_indices)
+
+# Combine the table "significant" with non-significant ones, for which the closest significant country is known.
+all_countries_with_replacement <- model_significant %>%
+  bind_rows(model_nonsignificant_with_closest) 
+
+
+
+
+
+# add intercept and filled suitability (needs to be modified if we do regression using plants 19-21 as predictor separately)
+
+updated_regression_results <- all_countries_with_replacement %>%
+  mutate(estimate_suitability_filled = 
+           ifelse(p.value_Ftest >= 0.05 | is.na(p.value_Ftest),
+                  model_significant$estimate_suitability[closest_significant_index],
+                                              estimate_suitability),
+         
+         estimate_intercept_filled = 
+           ifelse(p.value_Ftest >= 0.05 | is.na(p.value_Ftest),
+                  model_significant$estimate_intercept[closest_significant_index],
+                                              estimate_intercept))
+```
+
+
+# Check predicted protein yields
+
+```{r}
+r_intercept_avrg_grass_SI<- 
+  rasterize(updated_regression_results, template_rast_5arcmin, field="estimate_intercept_filled")
+
+
+r_beta_coef_avrg_grass_SI <- 
+  rasterize(updated_regression_results, template_rast_5arcmin, field="estimate_suitability_filled")
+
+
+r_predicted_animal_protein_yield_kg_ha <-
+  r_intercept_avrg_grass_SI + r_beta_coef_avrg_grass_SI * SI_grasses_5arcmin_mean # check that correct SI raster here
+
+
+pal_protein_lajolla <- scico(n = 6, palette = "lajolla", end = 0.85) 
+
+(plt_crop_protein_predicted <- 
+  create_index_map(r_index = r_predicted_animal_protein_yield_kg_ha,
+                     #r_predicted_protein_yield_outside_cl_but_in_gl_areas_and_in_suitable_areas_kg_ha, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Test estimated ANIMAL protein yields ", # outside current croplands 
+                   index_label = "[kg/ha]",
+                   colorpal = pal_protein_lajolla,
+                   breakvals = c(0, 1, 5, 10, 25, 50, Inf), # 1/10 of crops
+                   breaknames = c("0-1","1-5", "5-10",
+                                  "10-25","25-50",  ">50"))) 
 
 ```
 

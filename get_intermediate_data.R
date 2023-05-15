@@ -52,7 +52,7 @@ r_fraction_cl_NAto0 <- classify(r_fraction_cl, cbind(NA,0))
 r_fraction_gl <- 
   here("Data", "Input", "from_harddrive", 
        "fraction_of_cell_that_is_hyde_grazingland2010_0toNA.tif") %>%   #### changed 
-  rast()
+  rast() # includes corn belt as this is HYDE based gl
 r_fraction_gl[r_fraction_gl >1] <- 1
 r_fraction_gl_0toNA <- classify(r_fraction_gl, cbind(0,NA))
 r_fraction_gl_NAto0 <- classify(r_fraction_gl, cbind(NA,0))
