@@ -294,16 +294,16 @@ r_predicted_protein_yield_kg_ha <- r_intercept_filled + r_suitability_filled * S
 
 
 # create mask. First outside cl mask as this is where we need data
-# r_predicted_protein_yield_outside_cl_kg_ha <-
-#   mask(r_predicted_protein_yield_kg_ha, 
-#        r_physical_areas_crops_sum_ha_perpix, inverse = T)
-# 
-# 
-#   # moreover gl mask needed (otherwise shows all the possible areas)
-# r_predicted_protein_yield_outside_cl_but_in_gl_areas_kg_ha <- 
-#   mask(r_predicted_protein_yield_outside_cl_kg_ha, 
-#        r_fraction_gl_0toNA)
-# 
+r_predicted_protein_yield_outside_cl_kg_ha <-
+  mask(r_predicted_protein_yield_kg_ha,
+       r_physical_areas_crops_sum_ha_perpix, inverse = T)
+
+
+  # moreover gl mask needed (otherwise shows all the possible areas)
+r_predicted_protein_yield_outside_cl_but_in_gl_areas_kg_ha <-
+  mask(r_predicted_protein_yield_outside_cl_kg_ha,
+       r_fraction_gl_0toNA)
+
 # # one more mask to areas where SI > 0
 # SI_5arcmin_test <- SI_5arcmin
 # SI_5arcmin_test[SI_5arcmin_test < 1] <- NA

@@ -56,16 +56,24 @@ pal_ANPP_fraction<-  scico(n = 7, palette = "hawaii", begin = 0.1, end = 0.8)
 
 ```{r}
 
+r_fraction_gl_HYDE <-
+  here("Data", "Input", "from_harddrive",
+       "fraction_of_cell_that_is_hyde_grazingland2010_0toNA.tif") %>%   #### changed
+  rast() # includes corn belt as this is HYDE based gl
+
+r_fraction_gl_HYDE_0toNA <- classify(r_fraction_gl_HYDE, cbind(0,NA))
 
 r_fractions_cl_gl_and_total <- c(
-  r_fraction_gl_0toNA,
+  r_fraction_gl_HYDE_0toNA,
   r_fraction_cl_0toNA,
-  r_fraction_gl_cl_total_0toNA
+  r_fraction_gl_0toNA, # r_fraction_hyde_grazing_lands_masked_to_MODIS_IGBP_areas_0toNA.tif
+  r_fraction_gl_cl_total_0toNA # this must be changed as well!
 )
 
 names(r_fractions_cl_gl_and_total) <- c(
-  "Share of HYDE grazing lands in cell",
+  "Share of HYDE grazing land in cell",
   "Share of cropland in cell", 
+  "Share of grazing land in this study",
   "Share of grazing land and cropland combined (i.e. agricultural land) in cell")
   
 
@@ -84,7 +92,7 @@ names(r_fractions_cl_gl_and_total) <- c(
 
 pal_share_nuuk <- scico(n = 7, palette = "nuuk",  direction = -1) 
 
-(plt_shares_of_croplands_and_pasturelands <- 
+(plt_shares_of_croplands_and_grazing_lands <- 
     create_index_map(r_index = r_fractions_cl_gl_and_total*100,
                      tocrs = "ESRI:54030",
                      index_main_title = "Shares of croplands and grazing lands in 5 arc-minutes cells",
@@ -97,10 +105,15 @@ pal_share_nuuk <- scico(n = 7, palette = "nuuk",  direction = -1)
 
 
 
-tmap_save(plt_shares_of_croplands_and_pasturelands,
+tmap_save(plt_shares_of_croplands_and_grazing_lands,
           here("Figures", "Supplementary",
                "Shares of croplands and pasturelands in 5 arc-minutes cells.pdf"),
-          width = 180, height = 150, units = "mm")
+          dpi = 600)
+
+tmap_save(plt_shares_of_croplands_and_grazing_lands,
+          here("Figures", "Supplementary",
+               "Shares of croplands and pasturelands in 5 arc-minutes cells.png"),
+          dpi = 600)
 ```
 
 

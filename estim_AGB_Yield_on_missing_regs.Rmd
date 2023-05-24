@@ -305,14 +305,14 @@ r_beta_coef_avrg_grass_SI <-
   rasterize(updated_regression_results, template_rast_5arcmin, field="estimate_suitability_filled")
 
 
-r_predicted_animal_protein_yield_kg_ha <-
+r_predicted_AGB_based_protein_yield_kg_ha <-
   r_intercept_avrg_grass_SI + r_beta_coef_avrg_grass_SI * SI_grasses_5arcmin_mean # check that correct SI raster here
 
 
 pal_protein_lajolla <- scico(n = 6, palette = "lajolla", end = 0.85) 
 
 (plt_crop_protein_predicted <- 
-  create_index_map(r_index = r_predicted_animal_protein_yield_kg_ha,
+  create_index_map(r_index = r_predicted_AGB_based_protein_yield_kg_ha,
                      #r_predicted_protein_yield_outside_cl_but_in_gl_areas_and_in_suitable_areas_kg_ha, 
                    tocrs = "ESRI:54030",
                    index_main_title = "Test estimated ANIMAL protein yields ", # outside current croplands 
@@ -323,5 +323,41 @@ pal_protein_lajolla <- scico(n = 6, palette = "lajolla", end = 0.85)
                                   "10-25","25-50",  ">50"))) 
 
 ```
+
+# Mask predicted values for areas where we need the regression results (Gabirel -- not useful for you)
+
+Estimating AGB based protein is useful only in areas where amount of AGB protein is now known but where there could be some AGB based grazing production and thus AGB based protein.
+In other words, grazing lands can expand only when there is cropland in a cell. We know the AGB based protein yields for most of these cells but not all of them.
+Therefore, we need regression results in regions where there is cropland but where the amount of AGB protein is not known
+
+```{r}
+# create mask
+# r_fraction_cl_where_amount_ofAGBprot_not_known <- 
+#   mask(r_fraction_cl_0toNA,
+#        r_protein_from_065xAGB_kg_ha$animal_protein_kg_ha, # note the name
+#        inverse = T)
+# 
+# plot(r_fraction_cl_where_amount_ofAGBprot_not_known) # corn belt etc visible
+# 
+# 
+# r_predicted_AGB_based_protein_yield_on_cl_where_agb_prot_yield_not_known_kg_ha <-
+#   mask(r_predicted_AGB_based_protein_yield_kg_ha,
+#        r_fraction_cl_where_amount_ofAGBprot_not_known)
+# 
+# 
+# (plt_crop_protein_predicted_masked <- 
+#   create_index_map(r_index =
+#    r_predicted_AGB_based_protein_yield_on_cl_where_agb_prot_yield_not_known_kg_ha,
+#                    tocrs = "ESRI:54030",
+#                    index_main_title = "Test estimated ANIMAL protein yields ", # outside current croplands 
+#                    index_label = "[kg/ha]",
+#                    colorpal = pal_protein_lajolla,
+#                    breakvals = c(0, 1, 5, 10, 25, 50, Inf), # 1/10 of crops
+#                    breaknames = c("0-1","1-5", "5-10",
+#                                   "10-25","25-50",  ">50"))) 
+
+```
+
+
 
 

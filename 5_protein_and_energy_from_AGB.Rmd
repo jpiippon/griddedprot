@@ -2,11 +2,7 @@
 Protein production capacity from aboveground biomass (AGB)
 
 
-! Change names inside function so that they are not same as global names
-
-! 
-
-# hankkiudu eroon errorista
+# This is just to get rid of error
 
 ```{r}
 plot(cntry_raster) # Error in x$.self$finalize() : attempt to apply non-function
@@ -53,7 +49,7 @@ fbs_animals_wide <- fbs_animals %>%
   ## how many kcal do we get from amount of meat containing one kg of protein - required for simple conversion from protein production to energy production
   ## create variable protein to kcal 
   mutate(one_kg_prot_to_kcal =  (supply.KcalCapD / prot.gCapD) * 1000,
-         protein_fraction = (prot.gCapD*365/1000) / supply.KgCapYr) %>% # protein fraction for meat products -- not even needed
+         protein_fraction = (prot.gCapD*365/1000) / supply.KgCapYr) %>% # protein fraction for meat products -- not even needed?
   dplyr::select(-Item.Code) %>% 
   
   
@@ -143,9 +139,9 @@ fbs_animals_wide_filled <- bind_rows(fbs_animals_wide_filled_list)
 # ---------------------------------------------- find HYDE grazing land fraction
 r_fraction_gl <- 
   here("Data", "Input", "from_harddrive", ## add so that this file is in same place
-       "fraction_of_cell_that_is_hyde_grazingland2010_0toNA.tif") %>%   #### changed 
+       "r_fraction_hyde_grazing_lands_masked_to_MODIS_IGBP_areas_0toNA.tif") %>%   #### changed  was HYDE area only
   rast() # if value > 1 it should be just 1
-plot(r_fraction_gl, main = "fraction of HYDE grazing lands")
+plot(r_fraction_gl, main = "fraction of grazing lands in this study (HYDE-MODIS integration)")
 
 
 
@@ -358,7 +354,7 @@ plot(r_protein_from_065xAGB_kg_ha) # this kind of fig also needed for kcals
 # ------------------------------------------------ protein from AGB per pixel
 r_protein_from_065xAGB_kg_perpix <- 
   r_protein_from_065xAGB_kg_ha *
-  cellSize(r_protein_from_065xAGB_kg_perpix, unit = "ha") *
+  cellSize(r_protein_from_065xAGB_kg_ha, unit = "ha") *
   r_fraction_gl
 
 
@@ -538,9 +534,9 @@ global(r_kcal_from_065xAGB_MM_perpix*1e6, fun = "sum", na.rm = T)/1e12
 hist(r_kcal_from_065xAGB_MM_perpix*1e6) # sus high vals (over 2e9 for dairy)
 
   ## outliers removed --- these numbers in paper
-f_global_sum_without_outliers(r_kcal_from_065xAGB_MM_perpix$dairy_MMkcal_ha) /1e6 # 286  # was 440 dairy
-f_global_sum_without_outliers(r_kcal_from_065xAGB_MM_perpix$beef_MMkcal_ha) /1e6 # 65 # was 100 beef
-f_global_sum_without_outliers(r_kcal_from_065xAGB_MM_perpix$sheep_and_goats_MMkcal_ha) /1e6 # 98 # was 151 sheep_and_goats
+# f_global_sum_without_outliers(r_kcal_from_065xAGB_MM_perpix$dairy_MMkcal_ha) /1e6 # 286  # was 440 dairy
+# f_global_sum_without_outliers(r_kcal_from_065xAGB_MM_perpix$beef_MMkcal_ha) /1e6 # 65 # was 100 beef
+# f_global_sum_without_outliers(r_kcal_from_065xAGB_MM_perpix$sheep_and_goats_MMkcal_ha) /1e6 # 98 # was 151 sheep_and_goats
 
 
 
@@ -570,6 +566,46 @@ f_global_sum_without_outliers(r_kcal_from_065xAGB_MM_perpix$sheep_and_goats_MMkc
 ```
 
 
+
+
+
+# Rasterize protein fraction - needed when calculating LUR -- maybe not even needed!
+
+```{r}
+#fbs_animals_wide_filled$protein_fraction %>% hist()
+
+# combine fbs_animals_wide_filled with geometries
+
+# kcal production raster, example with dairy cows
+faoid_and_protein_fraction  <- 
+  fbs_animals_wide_filled %>%
+  filter(Item == "Meat") %>%
+  dplyr::select(Area.Code, protein_fraction)
+
+## create reclassification matrix
+rcl_mat_countries_to_protein_fraction <-
+  matrix(c(
+    faoid_and_protein_fraction$Area.Code,
+    faoid_and_protein_fraction$protein_fraction),
+    ncol = 2)
+
+
+## create raster where fao id has been replaced with protein_fraction
+r_protein_fraction_Meat_from_FAOtables  <- 
+  cntry_raster %>% 
+  classify(rcl_mat_countries_to_protein_fraction, 
+           others = 
+             (fbs_animals_wide_filled %>% 
+                filter(Area == "World", Item == "Meat") %>%
+                pull(protein_fraction)))# use global averages for missing countries
+
+names(r_protein_fraction_Meat_from_FAOtables) <- "protein_fraction_Meat"
+#plot(r_protein_fraction)
+```
+
+
+
+
 # Save rasters for intermediate use
 
 ```{r}
@@ -592,11 +628,12 @@ writeRaster(r_protein_from_065xAGB_kg_perpix,
              here("Data", "Intermediate_input","r_protein_from_065xAGB_kg_perpix.tif"),
             overwrite = T)
 
+
+writeRaster(r_protein_fraction_Meat_from_FAOtables,
+             here("Data", "Intermediate_input","r_protein_fraction_Meat_from_FAOtables.tif"),
+            overwrite = T)
+
 ```
-
-
-
-
 
 
 

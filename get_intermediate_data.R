@@ -19,8 +19,9 @@ r_prot_allcrops_sum_mt_perpix <- here("Data", "Intermediate_input","protein_prod
 r_prot_allcrops_sum_kg_ha <- here("Data", "Intermediate_input","protein_production_27crops_sum_kg_ha.tif") %>%
   rast()
 
-
-
+r_kcal_allcrops_sum_MM_perpix <-
+  here("Data", "Intermediate_input", "energy_production_27crops_sum_perpix.tif") %>% 
+  rast()
 
 # ---------------------------------------------------------------- livestock
 # Livestock protein and energy
@@ -35,7 +36,10 @@ r_kcal_from_065xAGB_MM_perpix <-
   here("Data", "Intermediate_input","r_kcal_from_065xAGB_MM_perpix.tif") %>% 
   rast()
 
-
+# maybe not needed
+# r_protein_fraction_Meat_from_FAOtables <-
+#   here("Data", "Intermediate_input","r_protein_fraction_Meat_from_FAOtables.tif") %>% 
+#   rast()
 
 
 # ------------------------------------------------------------------- fractions
@@ -49,10 +53,16 @@ r_fraction_cl_NAto0 <- classify(r_fraction_cl, cbind(NA,0))
 
 
 
+# r_fraction_gl <- 
+#   here("Data", "Input", "from_harddrive", 
+#        "fraction_of_cell_that_is_hyde_grazingland2010_0toNA.tif") %>%   #### changed 
+#   rast() # includes corn belt as this is HYDE based gl
+
 r_fraction_gl <- 
-  here("Data", "Input", "from_harddrive", 
-       "fraction_of_cell_that_is_hyde_grazingland2010_0toNA.tif") %>%   #### changed 
-  rast() # includes corn belt as this is HYDE based gl
+  here("Data", "Input", "from_harddrive", # NO Corn Belt
+       "r_fraction_hyde_grazing_lands_masked_to_MODIS_IGBP_areas_0toNA.tif") %>%   #### changed  was HYDE area only
+  rast()
+
 r_fraction_gl[r_fraction_gl >1] <- 1
 r_fraction_gl_0toNA <- classify(r_fraction_gl, cbind(0,NA))
 r_fraction_gl_NAto0 <- classify(r_fraction_gl, cbind(NA,0))

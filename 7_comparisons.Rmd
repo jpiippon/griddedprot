@@ -103,6 +103,7 @@ r_share_of_total_energy_livestock_SIbelow10mask_croplandmask <-
        SI_5arcmin_below10_croplandmask)
 
 ```
+
 # Protein kg per ha for figures
 
 ```{r}

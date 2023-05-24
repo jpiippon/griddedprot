@@ -61,6 +61,7 @@ pal_agb <- scico(n = 6, palette = "bamako", direction = -1)
 pal_protein_lajolla <- scico(n = 6, palette = "lajolla", end = 0.85) 
 
 pal_fcr <- scico(n = 6, palette = "tokyo", direction = -1)
+pal_lur <- scico(n =4, palette = "imola", direction = -1) 
 pal_cv <-  scico(n = 6, palette = "nuuk", direction = -1)
 ```
 
@@ -339,7 +340,11 @@ tmap_save(plts_crops, here("Figures", "27 crops protein energy and SI.pdf"))
 
 
 # Plot comparison part 1
--shares of total protein
+- total combined protein
+- shares of total protein
+- LUR
+Those maps could also be masked to areas where there is cropland and in croplands with SI < 10
+
 
 !! should also total protein be presented? It is interesting that production from marginal lands is just 4.3 / 11.1 = 39%
 
@@ -357,27 +362,39 @@ pal_share <-  scico(n = 10, palette = "roma", begin = 0.1, end = 0.9, direction 
 r_combined_protein_plots <- c(
   r_protein_combined_kg_ha,
   r_protein_combined_kg_ha_croplandmask,
-  r_protein_combined_kg_ha_outside_croplands)
+  r_protein_combined_kg_ha_SIbelow10mask_croplandmask)
   
 
-names(r_combined_protein_plots) <- c("prot_kgha", "prot_kgha_clmask", "prot_kgha_outside_cl")
+names(r_combined_protein_plots) <- c("prot_kgha", "prot_kgha_clmask", "prot_kgha_SI<10clmasl")
 
 
 r_shares_plot <- c(
   r_share_of_total_protein_livestock,
   r_share_of_total_protein_livestock_croplandmask,
-  r_share_of_total_protein_livestock_SIbelow10mask_croplandmask,
-  
-  r_share_of_total_energy_livestock,
-  r_share_of_total_energy_livestock_croplandmask,
-  r_share_of_total_energy_livestock_SIbelow10mask_croplandmask)
+  r_share_of_total_protein_livestock_SIbelow10mask_croplandmask #,
+  # r_share_of_total_energy_livestock,
+  # r_share_of_total_energy_livestock_croplandmask,
+  # r_share_of_total_energy_livestock_SIbelow10mask_croplandmask
+  )
 
 names(r_shares_plot) <- c(
-  "liv_shre_tot_prot", "liv_shre_tot_prot_clmask", "liv_shre_tot_prot_SI10clmasl",
-  "liv_shre_tot_kcal", "liv_shre_tot_kcal_clmask", "liv_shre_tot_kcal_SI10clmasl")
+  "liv_shre_tot_prot", "liv_shre_tot_prot_clmask", "liv_shre_tot_prot_SI10clmasl")
+# ,
+#   "liv_shre_tot_kcal", "liv_shre_tot_kcal_clmask", "liv_shre_tot_kcal_SI10clmasl")
+
+
+# LUR
+# combine LUR rasters
+r_LUR_current_combined <- 
+  c(LUR_i_current,
+    LUR_i_current_croplandmask,
+#    LUR_i_current_outside_croplands, # this is not needed
+    LUR_i_current_SIbelow10mask_croplandmask)
+names(r_LUR_current_combined) <-   c("LUR", "LUR_cl_mask", "LUR_SIbelow10clmask")
 
 
 
+# --------------------------------------------------------------- plot
 (plts_combined_protein <- 
   create_index_map(r_index = r_combined_protein_plots, 
                    tocrs = "ESRI:54030",
@@ -393,28 +410,37 @@ names(r_shares_plot) <- c(
     create_index_map(r_index = r_shares_plot, 
                      tocrs = "ESRI:54030",
                      index_main_title = "",
-                     index_label = "",
+                     index_label = "[%]",
                      colorpal = pal_share,
                      breakvals = c(0, 10, 25, 50, 75, 90, 100),
                      breaknames = c("<10", "10-25", "25-50","50-75","75-90", "90-100"))) 
   
 
 
-
+# add LUR
+(plt_LUR_current <- # works when LUR layers have different names
+  create_index_map(r_index = r_LUR_current_combined, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "",
+                   index_label = "[LUR]",
+                   colorpal = pal_lur,
+                   breakvals = c(0, 1, 10, 100,  Inf),
+                    breaknames = c("0-1","1-10","10-100",">100"))) 
 
 
 # ----------------------------------------------------------- protein outside cl
 
 
-plts_combined_prot_and_shares <-
+plts_combined_prot_and_shares_and_LUR <-
   tmap_arrange(
     plts_combined_protein,
     plts_shares,
+    plt_LUR_current,
   ncol = 3
 )
-plts_combined_prot_and_shares
+#plts_combined_prot_and_shares_and_LUR
 
-tmap_save(plts_combined_prot_and_shares, filename = here("Figures", "plts_combined_prot_and_shares.pdf"))
+tmap_save(plts_combined_prot_and_shares_and_LUR, filename = here("Figures", "plts_combined_prot_and_shares_and_LUR.pdf"))
 ```
 
 
@@ -423,7 +449,7 @@ tmap_save(plts_combined_prot_and_shares, filename = here("Figures", "plts_combin
 
 
 
-# Plot comparisons part 2 - potentials
+# Plot comparisons part 2 - potentials --- neeed to think whether this should be presented
 From suitabilities script
 
 ```{r}

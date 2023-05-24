@@ -6,13 +6,6 @@ output: html_document
 ---
 
 
-! tallenna r_physical_areas_crops_sum_ha_perpix Intermediate inputsiin
-
-! Change names inside function so that they are not same as global names (optional)
-
-
-
-
 # hankkiudu eroon errorista
 
 ```{r}
@@ -260,6 +253,10 @@ r_fraction_cl <-
   cellSize(r_physical_areas_crops_sum_ha_perpix, unit = "ha")
 names(r_fraction_cl) <- "fraction_crops"
 
+r_fraction_cl[r_fraction_cl >1] <- 1 # cannot be over 1
+r_fraction_cl_0toNA <- classify(r_fraction_cl, cbind(0,NA))
+
+
 # plot. e.g in India a large share of land area is cultivated for crops 
 plot(r_fraction_cl, main = "fraction of 27 crops in 5arcmin cells") ##!!  proper plot in supplementary --> edit with 27
 
@@ -482,20 +479,20 @@ tot_sums_cropspecies %>%
 # crop production
 r_global_production_crops_sum_kg_ha <-
   1000 * r_global_production_crops_sum_mt / 
-  (cellSize(r_global_production_crops_sum_mt, unit = "ha") * r_fraction_cl)
+  (cellSize(r_global_production_crops_sum_mt, unit = "ha") * r_fraction_cl_0toNA) # this must be 0 to NA as otherwise there will be div by 0
 summary(r_global_production_crops_sum_kg_ha)
 
 
 # crop protein production
 r_prot_allcrops_sum_kg_ha <- 
   (1000 *r_prot_allcrops_sum_mt_perpix) / # convert tons to kg
-  (cellSize(r_prot_allcrops_sum_mt_perpix, unit = "ha") * r_fraction_cl)
+  (cellSize(r_prot_allcrops_sum_mt_perpix, unit = "ha") * r_fraction_cl_0toNA)
 summary(r_prot_allcrops_sum_kg_ha) # median = 198 kg of protein
 
 # crop energy production 
 r_kcal_allcrops_sum_MM_ha <- 
   r_kcal_allcrops_sum_MM_perpix / 
-  (cellSize(r_kcal_allcrops_sum_MM_perpix, unit = "ha") * r_fraction_cl)
+  (cellSize(r_kcal_allcrops_sum_MM_perpix, unit = "ha") * r_fraction_cl_0toNA)
 summary(r_kcal_allcrops_sum_MM_ha)  # med 7 mean 8
 hist(r_kcal_allcrops_sum_MM_ha, breaks = 100)
 
@@ -521,8 +518,8 @@ sum(tot_sums_cropspecies$prot_Mt_FAO) # 306 -- FAO global average based protein
 
 
   ##  outliers removed 
-f_global_sum_without_outliers(r_prot_allcrops_sum_mt_perpix)/1e6 # 240 mmt
-f_global_sum_without_outliers(r_kcal_allcrops_sum_MM_perpix)/1e6 # 8359 trillion kcal
+# f_global_sum_without_outliers(r_prot_allcrops_sum_mt_perpix)/1e6 # 240 mmt
+# f_global_sum_without_outliers(r_kcal_allcrops_sum_MM_perpix)/1e6 # 8359 trillion kcal
 
 
 # trimmed_value_r_prot_allcrops_sum_mt_perpix <-
@@ -538,93 +535,37 @@ f_global_sum_without_outliers(r_kcal_allcrops_sum_MM_perpix)/1e6 # 8359 trillion
 
 ```{r}
 
-# writeRaster(r_physical_areas_crops_sum_ha_perpix,
-#             here("Data", "Intermediate_input","r_physical_areas_crops_sum_ha_perpix.tif"))
+writeRaster(r_physical_areas_crops_sum_ha_perpix,
+            here("Data", "Intermediate_input","r_physical_areas_crops_sum_ha_perpix.tif"),
+            overwrite =T)
 
 
-# writeRaster(r_global_production_crops_sum_kg_ha,
-#             here("Data", "Intermediate_input","r_global_production_crops_sum_kg_ha.tif"))
-
-
-
-# writeRaster(r_fraction_cl,
-#             here("Data", "Intermediate_input","r_fraction_cl_with_27_spamcrops.tif"))
-
-# names(r_prot_allcrops_sum_mt_perpix) <- "crop_protein_mt_perpix"
-# writeRaster(r_prot_allcrops_sum_mt_perpix,
-#             here("Data", "Intermediate_input", "protein_production_27crops_sum_mt_perpix.tif"))
-# 
-# 
-# names(r_prot_allcrops_sum_kg_ha) <- "crop_protein_kg_ha"
-# writeRaster(r_prot_allcrops_sum_kg_ha,
-#             here("Data", "Intermediate_input", "protein_production_27crops_sum_kg_ha.tif"))
-```
+writeRaster(r_global_production_crops_sum_kg_ha,
+            here("Data", "Intermediate_input","r_global_production_crops_sum_kg_ha.tif"),
+            overwrite =T)
 
 
 
-# test
+writeRaster(r_fraction_cl,
+            here("Data", "Intermediate_input","r_fraction_cl_with_27_spamcrops.tif"),
+            overwrite = T)
 
-https://statdb.luke.fi/PxWeb/pxweb/fi/LUKE/LUKE__02%20Maatalous__04%20Tuotanto__14%20Satotilasto/01_Viljelykasvien_sato.px/table/tableViewLayout2/?rxid=dc711a9e-de6d-454b-82c2-74ff79a3a5e0 
+names(r_prot_allcrops_sum_mt_perpix) <- "crop_protein_mt_perpix"
+writeRaster(r_prot_allcrops_sum_mt_perpix,
+            here("Data", "Intermediate_input", "protein_production_27crops_sum_mt_perpix.tif"),
+            overwrite = T)
 
-```{r}
-# 
-# r_global_production_crops_sum_kg_ha %>% plot(., range = c(0,10000))
-# r_global_production_crops_sum_kg_ha %>% hist(breaks= 100, xlim = c(0,10000)) # yields small, check finland
-# 
-# 
-# 
-# # FINLAND
-#   ## viljelyala vehnä
-# f_physical_area_crops_ha_perpix("WHEA") %>%  # production area
-#   crop_and_mask(., Finland_geom) %>% 
-#   global(., fun = "sum", na.rm = T)/1000 # 225 (1000 ha) --- close to Luke values -- or actually 14 000 ha difference
-# ## sane as 
-# r_physical_areas_ha_perpix$WHEA %>% 
-#   crop_and_mask(., Finland_geom) %>% 
-#   global(., fun = "sum", na.rm = T)/1000 # 225 (1000 ha) 
-# 
-# 
-#   ## suomen kokonais vehnäsato
-# vehnäsato_kg_perpix_fin <- 1000*r_global_prod_crops_mt$WHEA %>% 
-#   crop_and_mask(., Finland_geom)
-# global(vehnäsato_kg_perpix_fin, "sum", na.rm = T)/1e6 # 856 milj kg --> pitäis olla 724.4 ---- 131 milj kg ero
-# 
-# 
-# 
-# 
-# ########################################################### jatka täältä, joku väärin ------- tarvitaanko fraction vehnämaa suomi?
-#   ## vehnä sato --- ensin muuta sato kg per ha
-# 
-# vehnäsato_kg_ha_fin <- vehnäsato_kg_perpix_fin / cellSize(vehnäsato_kg_perpix_fin, unit = "ha")
-# plot(vehnäsato_kg_ha_fin)
-# 
-# wheat_yield_fin <- crop_and_mask(r_global_prod_crops_mt$WHEA, Finland_geom) 
-# plot(wheat_yield_fin, main = "vehnän satotaso suomessa kg ha")
-# hist(wheat_yield_fin, main = "vehnän satotaso ---- pieneltä näyttää") 
-# # ohraa 1023 milj kg
-# 
-# 
-# plot(cellSize(vehnäsato_kg_perpix_fin, unit = "ha"))
-# 
-# 
-# 
-# 
-# 
-# #------------------------------------------------------------------ OHRA Suomi
-#  ## viljelyala ohra
-# r_physical_areas_ha_perpix$BARL %>% 
-#   crop_and_mask(., Finland_geom) %>% 
-#   global(., fun = "sum", na.rm = T)/1000 # 470 (1000 ha) --- Luken mukaan 417
-# 
-# 
-#   ## kokonaissato ohra
-# ohrasato_kg_perpix_fin <- 1000*r_global_prod_crops_mt$BARL %>% 
-#   crop_and_mask(., Finland_geom)
-# 
-# ohrasato_kg_perpix_fin2 <- 1000*f_global_prod_crops_mt("BARL") %>% 
-#   crop_and_mask(., Finland_geom)
-# 
-#  ## ohrasato hehtaareittain
+
+names(r_prot_allcrops_sum_kg_ha) <- "crop_protein_kg_ha"
+writeRaster(r_prot_allcrops_sum_kg_ha,
+            here("Data", "Intermediate_input", "protein_production_27crops_sum_kg_ha.tif"),
+            overwrite =T)
+
+
+names(r_kcal_allcrops_sum_MM_perpix) <- "crop_kcal_MM_perpix"
+writeRaster(r_kcal_allcrops_sum_MM_perpix,
+            here("Data", "Intermediate_input", "energy_production_27crops_sum_perpix.tif"),
+            overwrite =T)
 ```
 
 

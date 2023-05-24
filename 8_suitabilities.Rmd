@@ -5,8 +5,6 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
-# ----------------------- chunk 3 laskettu uusilla datoilla
-
 
 ! Koeta laskea uusi extrasato käyttäen perpix arvoja - sitten ei tartte maskata top99% arvoja pois
  --> tuskin vaikuttaa lopputulokseen mutta silti oikeaoppisempaa
@@ -52,7 +50,7 @@ r_SIbased_restricted_max_cropland_ha_perpix_NAto0 <-
 
 
 # Chunk 4
-r_potential_cropland_expansion_ha_perpix- <-
+r_potential_cropland_expansion_ha_perpix <-
   here("Data", "Intermediate_input", "r_potential_cropland_expansion_ha_perpix.tif") %>% 
   rast()
 
@@ -94,7 +92,6 @@ r_cropland_expansion_percent_outside_croplands <-
 
 
 # Chunk 6
-
 r_grazingland_reduction_percent <-
   here("Data", "Intermediate_input",
        "r_grazingland_reduction_percent.tif") %>% 
@@ -111,7 +108,27 @@ r_grazingland_reduction_percent_outside_croplands <-
 
 
 # Chunk 7
+r_protein_fromAGB_decrease_basedOnSI_outside_cl_mt_perpix <-
+  here("Data", "Intermediate_input","r_protein_fromAGB_decrease_basedOnSI_outside_cl_mt_perpix.tif") %>% 
+  rast()
 
+r_protein_fromAGB_decrease_basedOnSI_on_pixels_where_clANDgl_protein_known_mt_perpix <-
+  here("Data", "Intermediate_input",
+       "r_protein_fromAGB_decrease_basedOnSI_on_pixels_where_clANDgl_protein_known_mt_perpix.tif") %>% 
+  rast()
+
+r_protein_fromAGB_decrease_basedOnSI_on_cl_pixels_where_gl_protein_NOTknown_mt_perpix <-
+  here("Data", "Intermediate_input",
+       "r_protein_fromAGB_decrease_basedOnSI_on_cl_pixels_where_gl_protein_NOTknown_mt_perpix.tif") %>% 
+  rast()
+
+r_protein_decrease_basedOnSI_grazers_mt_perpix <-
+  here("Data", "Intermediate_input","r_protein_decrease_basedOnSI_grazers_mt_perpix.tif") %>% 
+  rast()
+
+r_optimized_grazing_protein_kg_perpix <- 
+  here("Data", "Intermediate_input","r_optimized_grazing_protein_kg_perpix.tif") %>% 
+  rast()
 
 
 
@@ -132,7 +149,7 @@ r_grazingland_reduction_percent_outside_croplands <-
 
 
 ##############
-
+pal_share_nuuk <- scico(n = 7, palette = "nuuk",  direction = -1)
 
 create_dynamic_index_map <- function(myraster, layer_num, main_title, 
                                      diff_breakvals = c(-Inf, 10, 20, 60, 80, 100, Inf),
@@ -154,7 +171,7 @@ create_dynamic_index_map <- function(myraster, layer_num, main_title,
 threshold_values <- 0:99
 
 # to make thigs even easier
-template_rast_5arcmin_cellsize <- cellSize(template_rast_5arcmin, unit = "ha")
+#template_rast_5arcmin_cellsize <- cellSize(template_rast_5arcmin, unit = "ha")
 
 ```
 
@@ -182,16 +199,14 @@ pal_share_nuuk <- scico(n = 7, palette = "nuuk",  direction = -1)
 
 # Chunk 2 Examine Zabel 2022 SI data
 
-In this chunk, we are analyzing the Zabel 2022 SI data, specifically looking at version 3.0, overall suitability for the years 1980-2009 with current irrigation areas applied. The goal is to classify, aggregate, and resample the raster based on a threshold value.
+In this chunk, we are analyzing the Zabel 2022 SI data, specifically looking at version 3.0, overall suitability for the years 1980-2009 with current irrigation areas applied (only for food crops 1-17). The goal is to classify, aggregate, and resample the raster based on a threshold value.
 
 
 ```{r}
 # Load SI data (requires .hdr file with the same name in the folder)
-  # overall_suitability_hist1980_2009_all_rainfed.hdr
 SI_30arcsec <- 
   here("Data", "Input", "Zabel22_SI", 
-       "overall_suitability_subset_1to17_hist1980_2009_current_irr_areas_applied.bil") %>% # changed!!
-  
+       "overall_suitability_subset_1to17_hist1980_2009_current_irr_areas_applied.bil") %>% 
   rast()
 plot(SI_30arcsec)
 
@@ -542,8 +557,8 @@ writeRaster(r_potential_cropland_expansion_outside_croplands_fraction, filename 
 
 r_cropland_expansion_percent <-
   100 * r_potential_cropland_expansion_fraction / 
-  r_fraction_cl_NAto0 
- !!!!!!! meneekö väärin kun on nollalla jako? Missä Inf arvot haittaavat?
+  r_fraction_cl_NAto0 ---- should this be 0toNA instead? to avoid Inf vals..
+ 
 
 ```{r}
 # ------------------------------------ How much cropland could increase in %?
@@ -760,6 +775,12 @@ writeRaster(r_grazingland_reduction_percent_outside_croplands,
                              diff_breaknames = c("-100 to -50",  "-50 to -10", "-10 to 0", "0 to 10", "10 to 50","50 to 80", "more than 80")))
 
 
+
+
+
+
+
+
 ```
 
 
@@ -788,6 +809,83 @@ eläinproteiinin uusi sato  alkuperäinen sato * (0.40 - (0.45-0.30))/0.40, joss
 
 ```{r}
 # ------------------------------------------------------ optimized livestock
+
+# eläinprotskun määrä voi ainoastaan vähentyä niillä alueilla, joilla on nykyään grazing landia  mutta ei croplandia
+  # Jos cl ei käännetä gl, proteiinin määrä pysyy ennallaan (decrease = 0)
+  # Explore first how much AGB based protein could decrease in current gl areas where crops could expand
+################################################################################
+r_protein_fromAGB_decrease_basedOnSI_outside_cl_mt_perpix <- # eli cl alueiden ulkopuolella --- = gl alueilla -- tämä on tiedossa
+  (r_protein_from_065xAGB_kg_ha$current_herd_str/1000) *
+  cellSize(r_protein_from_065xAGB_kg_ha$current_herd_str, unit = "ha") *
+  r_potential_cropland_expansion_outside_croplands_fraction # [0,1] as no current cl outside cl
+
+
+# check this
+# test1 <- global(r_protein_fromAGB_decrease_basedOnSI_outside_cl_mt_perpix, "sum", na.rm=T)/1e6
+# test1 <- round(test1, 1) # from 4.2 mmt to 0 (cannot decrease below zero on grazing lands)
+################################################################################
+
+
+
+# Then the trickier part: how much AGB prot can decrease in curret cropland areas?
+  # jos pikselissä cl ja gl proteiini tiedossa, vähennys helppo laskea
+  # jos pikselissä cl tiedossa mutta gl perusteinen protsku EI tiedossa, pitää käyttää regressiota
+
+################################################################################
+r_protein_fromAGB_decrease_basedOnSI_on_pixels_where_clANDgl_protein_known_mt_perpix <-
+  (r_protein_from_065xAGB_kg_ha$current_herd_str / 1000) *
+  cellSize(r_protein_from_065xAGB_kg_ha$current_herd_str, unit = "ha") *
+  
+  mask(r_potential_cropland_expansion_croplandmask_fraction,
+       r_protein_from_065xAGB_kg_ha$current_herd_str)
+
+# check this
+# test2 <- global(r_protein_fromAGB_decrease_basedOnSI_on_pixels_where_clANDgl_protein_known_mt_perpix, "sum", na.rm=T)/1e6
+# test2 <- round(test2, 1) # from 6.8 to -2.8
+################################################################################
+
+
+################################################################################
+r_fraction_cl_where_amount_ofAGBprot_not_known <- 
+  mask(r_fraction_cl_0toNA,
+       r_protein_from_065xAGB_kg_ha$current_herd_str, 
+       inverse = T) # näille alueille pitää laskea AGB proteiini regression avulla
+
+
+r_protein_fromAGB_decrease_basedOnSI_on_cl_pixels_where_gl_protein_NOTknown_mt_perpix <-
+  (r_predicted_AGB_based_protein_yield_on_cl_where_agb_prot_yield_not_known_kg_ha/1000) *
+  cellSize(r_predicted_AGB_based_protein_yield_on_cl_where_agb_prot_yield_not_known_kg_ha, unit = "ha") *
+  
+  mask(r_potential_cropland_expansion_croplandmask_fraction,
+       r_fraction_cl_where_amount_ofAGBprot_not_known)
+
+#check this
+# test3 <- global(r_protein_fromAGB_decrease_basedOnSI_on_cl_pixels_where_gl_protein_NOTknown_mt_perpix, "sum",na.rm=T)/1e6
+# test3 <- round(test3, 1)
+# View(test3)
+
+################################################################################
+
+# Combine 
+r_protein_decrease_basedOnSI_grazers_mt_perpix <-
+  classify(r_protein_fromAGB_decrease_basedOnSI_outside_cl_mt_perpix, cbind(NA,0))+
+  classify(r_protein_fromAGB_decrease_basedOnSI_on_pixels_where_clANDgl_protein_known_mt_perpix ,cbind(NA,0)) +
+  classify(r_protein_fromAGB_decrease_basedOnSI_on_cl_pixels_where_gl_protein_NOTknown_mt_perpix, cbind(NA,0))
+
+r_protein_decrease_basedOnSI_grazers_mt_perpix <-
+  mask(r_protein_decrease_basedOnSI_grazers_mt_perpix, 
+       r_fraction_gl_cl_total_0toNA)
+# mostly zero (median = 0) but decrease < 0 when SI high, which means that animal protein increases
+
+#check this
+# test4 <-
+#   global(r_protein_decrease_basedOnSI_grazers_mt_perpix, "sum", na.rm=T)/1e6
+# test4 <- round(test4, 1)
+# View(test4)
+
+
+
+
 # gl area can decrease only in areas where there is some gl. Therefore mask to areas where there is gl 
 # r_optimized_dairy_protein_yield_kg_perpix <- # check the a4 notebook for this
 #   ((r_fraction_gl_0toNA - r_potential_cropland_expansion_fraction ) / # was r_potential_grazingland_reduction_fraction_glmask
@@ -804,37 +902,74 @@ eläinproteiinin uusi sato  alkuperäinen sato * (0.40 - (0.45-0.30))/0.40, joss
 #            rclmat_neg_to_zeros, right = TRUE)
 
 ############################## new
-r_protein_decrease_basedOnSI_dairy_kg_perpix <-
-  r_protein_from_065xAGB_kg_ha$dairy * # ------------------------- vaihda current herd structures
-  cellSize(r_protein_from_065xAGB_kg_ha$dairy, unit = "ha") *
-  r_potential_cropland_expansion_fraction
+  # this is now done based on yields per hectare 
 
-names(r_protein_decrease_basedOnSI_dairy_kg_perpix) <- 
-  paste0("dairyprot_kgpix_SI", threshold_values)
+# onko tämä väärin --> selvitä minkä verran AGB prot voisi kasvaa cl alueilla jotka voitaisiin valjastaa gl käyttöön kun SI on riittävän pieni -- eli pitää tehdä samalla tavalla kuin crops kanssa
+# r_grazing_protein_decrease_basedOnSI_kg_perpix <-
+#   r_protein_from_065xAGB_kg_ha$current_herd_str  * 
+#   cellSize(r_protein_from_065xAGB_kg_ha$current_herd_str, unit = "ha") *
+#   r_potential_cropland_expansion_fraction
+# 
+# names(r_grazing_protein_decrease_basedOnSI_kg_perpix) <- 
+#   paste0("prot_kgpix_SI", threshold_values)
 
 
-# optimised dairy protein production = original protein raster - raster showin how much dairy prot should decrease (increses if there are negative values in r_protein_decrease_basedOnSI_dairy_kg_perpix)
-  # = r_protein_from_065xAGB_kg_perpix$dairy - r_protein_decrease_basedOnSI_dairy_kg_perpix 
-r_optimized_dairy_protein_kg_perpix <-
-  r_protein_from_065xAGB_kg_perpix$dairy - r_protein_decrease_basedOnSI_dairy_kg_perpix
+# optimised animal protein production = original protein raster - raster showing how much animal prot should decrease (increses if there are negative values in r_grazing_protein_decrease_basedOnSI_kg_perpix)
+  # = r_protein_from_065xAGB_kg_perpix$current_herd_str  - r_grazing_protein_decrease_basedOnSI_kg_perpix 
+r_optimized_grazing_protein_kg_perpix <-
+  classify(r_protein_from_065xAGB_kg_perpix$current_herd_str, cbind(NA,0)) - 
+  (r_protein_decrease_basedOnSI_grazers_mt_perpix*1000) # -(-) = +
 
-names(r_optimized_dairy_protein_kg_perpix) <- 
-  paste0("dairyprot_kgpix_SI", threshold_values)
+names(r_optimized_grazing_protein_kg_perpix) <- 
+  paste0("prot_kgpix_SI", threshold_values)
+
 
   # check
-r_optimized_dairy_protein_kg_perpix$dairyprot_kgpix_SI5 %>% 
+r_optimized_grazing_protein_kg_perpix[[5]] %>% 
   plot(., main = "When SI>5 vals 'd be used for crops, there'd be A LOT of cl and little gl")
-r_optimized_dairy_protein_kg_perpix$dairyprot_kgpix_SI95 %>% 
+r_optimized_grazing_protein_kg_perpix[[95]] %>% 
   plot(., main = "When SI>95 vals 'd be used for crops, there'd be much less cl to convert and thus no gl dec")
-r_protein_from_065xAGB_kg_perpix$dairy %>% 
-  plot(., main = "Original dairy protein raster")
+r_protein_from_065xAGB_kg_perpix$current_herd_str %>% 
+  plot(., main = "Original protein production raster (current herd)")
+
+
+#check this
+test5 <- global(r_optimized_grazing_protein_kg_perpix, "sum", na.rm=T)/1e9
+test5 <- round(test5, 1)
+View(test5)
 
 
 
+writeRaster(r_protein_fromAGB_decrease_basedOnSI_outside_cl_mt_perpix,
+            filename = here("Data", "Intermediate_input",
+                            "r_protein_fromAGB_decrease_basedOnSI_outside_cl_mt_perpix.tif"),
+            overwrite =T)
+
+
+writeRaster(r_protein_fromAGB_decrease_basedOnSI_on_pixels_where_clANDgl_protein_known_mt_perpix,
+            filename = here("Data", "Intermediate_input",
+                            "r_protein_fromAGB_decrease_basedOnSI_on_pixels_where_clANDgl_protein_known_mt_perpix.tif"),
+            overwrite =T)
 
 
 
+writeRaster(r_protein_fromAGB_decrease_basedOnSI_on_cl_pixels_where_gl_protein_NOTknown_mt_perpix,
+            filename = here("Data", "Intermediate_input",
+                            "r_protein_fromAGB_decrease_basedOnSI_on_cl_pixels_where_gl_protein_NOTknown_mt_perpix.tif"),
+            overwrite =T)
 
+
+writeRaster(r_protein_decrease_basedOnSI_grazers_mt_perpix,
+            filename = here("Data", "Intermediate_input",
+                            "r_protein_decrease_basedOnSI_grazers_mt_perpix.tif"),
+            overwrite =T)
+
+
+
+writeRaster(r_optimized_grazing_protein_kg_perpix,
+            filename = here("Data", "Intermediate_input",
+                            "r_optimized_grazing_protein_kg_perpix.tif"),
+            overwrite =T)
 
 
 # ------------------------------------------------------ optimized crops
@@ -844,12 +979,12 @@ r_protein_from_065xAGB_kg_perpix$dairy %>%
 
 
 # test2 - calculate new "extra" protein yield on croplands in case only areas with SI >= 75 can be used
-r_extra_protein_crops_test2_croplands_75 <-
-  f_raster_without_outliers(r_prot_allcrops_sum_kg_ha) * # 21 - 4235 kg per ha
-  cellSize(r_prot_allcrops_sum_kg_ha, unit = "ha")*
-  r_potential_cropland_expansion_croplandmask_fraction[[75]] # -1 to 1
-
-global(r_extra_protein_crops_test2_croplands_75, "sum", na.rm=T)/1e9 # -102 mmt	
+# r_extra_protein_crops_test2_croplands_75 <-
+#   f_raster_without_outliers(r_prot_allcrops_sum_kg_ha) * # 21 - 4235 kg per ha
+#   cellSize(r_prot_allcrops_sum_kg_ha, unit = "ha")*
+#   r_potential_cropland_expansion_croplandmask_fraction[[75]] # -1 to 1
+# 
+# global(r_extra_protein_crops_test2_croplands_75, "sum", na.rm=T)/1e9 # -102 mmt	
 # test 2 mukaan siis sato pienenee noin 102mmt eli 274 - 102 = 172 mmt olisi uusi sato 
 # tämä uusi sato on noin 63% alkuperäisestä proteiinisadosta
 # kun SI >= 75, cl ala pienenee 975 - 450 Mha = 525, mikä on noin 54% alkuperäisestä alasta
@@ -929,8 +1064,8 @@ r_protein_increase_basedOnSI_crops_outside_cl_mt_perpix <-
 
 
 r_protein_increase_basedOnSI_crops_croplandmask_mt_perpix <-
-  f_raster_without_outliers(r_prot_allcrops_sum_kg_ha) * # 21 - 4235 kg per ha
-  cellSize(r_prot_allcrops_sum_kg_ha, unit = "ha")*
+  r_prot_allcrops_sum_kg_ha *
+  cellSize(r_prot_allcrops_sum_kg_ha, unit = "ha") *
   r_potential_cropland_expansion_croplandmask_fraction / # -1 to 1
   1000
 
@@ -978,34 +1113,36 @@ names(r_optimised_protein_crops_mt_perpix) <-
     paste0("cropProt_mtpix_SI", threshold_values)
 
 
-
+writeRaster(r_optimised_protein_crops_mt_perpix,
+            here("Data", "Intermediate_input", "r_optimised_protein_crops_mt_perpix.tif"),
+            overwrite = T)
 
 
 
 # optimised combined yield (maybe give names?)
-r_optimised_protein_yield_whendairy_combined_with_crops_kg_perpix <-
-   classify(r_optimized_dairy_protein_kg_perpix, cbind(NA,0)) +
+r_optimised_combined_protein_yield_kg_perpix <-
+   classify(r_optimized_grazing_protein_kg_perpix, cbind(NA,0)) +
    1000*r_optimised_protein_crops_mt_perpix
 
 
 
 
-r_optimized_protein_yield_larger_percent <-
-  100*(r_optimised_protein_yield_whendairy_combined_with_crops_kg_perpix - r_protein_combined_kg_perpix$`when Dairy cattle`)/
-  r_protein_combined_kg_perpix$`when Dairy cattle`
+r_optimized_combined_protein_yield_larger_percent <-
+  100*(r_optimised_combined_protein_yield_kg_perpix - r_protein_combined_kg_perpix)/
+  r_protein_combined_kg_perpix
 
 
 
 
 # 
-writeRaster(r_optimised_protein_yield_whendairy_combined_with_crops_kg_perpix,
+writeRaster(r_optimised_combined_protein_yield_kg_perpix,
             filename = here("Data", "Intermediate_input",
-                            "r_optimised_protein_yield_whendairy_combined_with_crops_kg_perpix.tif"),
+                            "r_optimised_combined_protein_yield_kg_perpix.tif"),
             overwrite= T)
 
-writeRaster(r_optimized_protein_yield_larger_percent,
+writeRaster(r_optimized_combined_protein_yield_larger_percent,
             filename = here("Data", "Intermediate_input",
-                            "r_optimized_protein_yield_larger_percent.tif"),
+                            "r_optimized_combined_protein_yield_larger_percent.tif"),
             overwrite= T)
 
 
@@ -1017,9 +1154,9 @@ writeRaster(r_optimized_protein_yield_larger_percent,
 
 # # test plot ------ change no change class to something else
 (plt_r_optimized_protein_yield_larger75 <-
-      create_index_map(r_index = r_optimized_protein_yield_larger_percent[[75]],
+      create_index_map(r_index = r_optimized_combined_protein_yield_larger_percent[[75]],
                      tocrs = "ESRI:54030",
-                     index_main_title = "Optimised protein production compared to original combined protein production \n when SI >= 75(here dairy + crops considered)",
+                     index_main_title = "Optimised combined protein production compared to original combined protein production \n when SI >= 75",
                      index_label = "%",
                      colorpal = pal_share_nuuk,
                      breakvals = c(-Inf, -50, 0, 20, 50, 100, Inf),
@@ -1031,9 +1168,9 @@ writeRaster(r_optimized_protein_yield_larger_percent,
 
 
 (plt_r_optimized_protein_yield_larger33 <-
-      create_index_map(r_index = r_optimized_protein_yield_larger_percent[[33]],
+      create_index_map(r_index = r_optimized_combined_protein_yield_larger_percent[[33]],
                      tocrs = "ESRI:54030",
-                     index_main_title = "Optimised protein production compared to original combined protein production \n when SI >= 33(here dairy + crops considered)",
+                     index_main_title = "Optimised combined protein production compared to original combined protein production \n when SI >= 33",
                      index_label = "%",
                      colorpal = pal_share_nuuk,
                      breakvals = c(-Inf, -50, 0, 20, 50, 100, Inf),
@@ -1086,41 +1223,23 @@ df_SI <- df_SI %>%
            pull(global(r_potential_cropland_expansion_croplandmask_ha_perpix,
                        fun = "sum", na.rm = T)/1e6))
 
+# Chunks 5-6 deak with percents -- no need to add them to this df
 
 
 
-# global sums --- these are the same as above
-# df_SI <- df_SI %>% 
-#   mutate(potential_grazingland_reduction_Mha = 
-#            pull(global(r_potential_grazingland_reduction_ha_perpix, 
-#                        fun = "sum", na.rm = T)/1e6),
-#          potential_grazingland_reduction_cl_mask_Mha = 
-#            pull(global(r_potential_grazingland_reduction_croplandmask_ha_perpix,
-#                        fun = "sum", na.rm = T)/1e6),
-#          potential_grazingland_reduction_outside_cl_Mha = 
-#            pull(global(r_potential_grazingland_reduction_outside_croplands_ha_perpix,
-#                        fun = "sum", na.rm = T)/1e6))
+# Chunk 7 protein
 
-  # dairy protein
+  # animal based protein from AGB (add different masks here?)
 df_SI <- df_SI %>% 
-  mutate(Original_dairy_protein_production_mmt = 
-           pull(global(r_protein_from_065xAGB_kg_perpix$dairy, "sum", na.rm=T)/1e9),
-         Protein_decrease_basedOnSI_dairy_mmt =
-           pull(global(r_protein_decrease_basedOnSI_dairy_kg_perpix, "sum", na.rm=T)/1e9),
-         Optimised_dairy_protein_mmt = 
-           pull(global(r_optimized_dairy_protein_kg_perpix, "sum", na.rm = T)/1e9))
+  mutate(Protein_from_AGB_original_mmt = 
+           pull(global(r_protein_from_065xAGB_kg_perpix$current_herd_str , "sum", na.rm=T)/1e9),
+         Protein_from_AGB_decrease_mmt =
+           pull(global(r_protein_decrease_basedOnSI_grazers_mt_perpix, "sum", na.rm=T)/1e6),
+         Protein_from_AGB_optimised_mmt = 
+           pull(global(r_optimized_grazing_protein_kg_perpix, "sum", na.rm = T)/1e9))
 
 
-# vanha selitys alla -- ei välttis validi
-# minne häviää noin 50% proteiinista?
-# silloinkin jos vain SI maa-alueet, joiden SI > 95 kelpuutetaan uusiksi viljapelloiksi, maa-ala kasvaa "vain" 50mha
-# onko mahdollista, että jos gl käytöstä poistuu 50Mha, proteiini tippuu 27mmt --> 13 mmt? Ei varmaan
-# onko joku outo SI maski taustalla?
-
-
-  # crop protein (add masks here)
-
-
+  # crop protein (add masks here?)
 df_SI <- df_SI %>% 
   mutate(Original_crop_protein_production_mmt = 
            pull(global(r_prot_allcrops_sum_mt_perpix, "sum", na.rm=T)/1e6),
@@ -1133,12 +1252,105 @@ df_SI <- df_SI %>%
 # Optimised combined protein
 df_SI <- df_SI %>% 
   mutate(Optimised_combined_protein_mmt = 
-           pull(global(r_optimised_protein_yield_whendairy_combined_with_crops_kg_perpix,
+           pull(global(r_optimised_combined_protein_yield_kg_perpix,
                        "sum", na.rm =T)/1e9))
 
 
+
+
+# Save df data
+write.csv(df_SI,
+          here("Data", "Output", "Total_sums_cropland_expansion_and_optimised_protein_production.csv"))
+
+library(openxlsx) 
+write.xlsx(df_SI, 
+           here("Data", "Output", "Total_sums_cropland_expansion_and_optimised_protein_production.xlsx"),
+           rowNames = FALSE)
 ```
 
+
+
+
+# Ggplot
+
+```{r}
+df_rounded <- round(df_SI, 1)
+# Suodata sarakkeet, joiden nimessä on "Mha"
+
+Mha_columns <- grep("Mha", colnames(df_SI), value = TRUE)
+prot_columns <- grep("(?i)protein", colnames(df_SI), value = TRUE)
+
+
+# Muuta df_SI:n pitkäksi muodoksi
+df_SI_long_Mha <- df_SI %>%
+  dplyr::select(SI_class, all_of(Mha_columns)) %>%
+  # dplyr::select(-c(potential_grazingland_reduction_Mha,
+  #                  potential_grazingland_reduction_cl_mask_Mha,
+  #                  potential_grazingland_reduction_outside_cl_Mha   )) %>% 
+  pivot_longer(cols = -SI_class, names_to = "Variable", values_to = "Value")
+
+
+df_SI_long_protein <- df_SI %>%
+  dplyr::select(SI_class, all_of(prot_columns))  %>% 
+  pivot_longer(cols = -SI_class, names_to = "Variable", values_to = "Value")
+
+
+# HECTARES
+plt_hectares_line <-
+  ggplot(df_SI_long_Mha %>% filter(SI_class>0), aes(x = SI_class, y = Value, color = Variable)) +
+  geom_line(size = 1) +
+  scale_x_continuous(breaks = seq(0, 100, 5), name = "SI Class") +
+  scale_y_continuous(name = "Million of ha") +
+  labs(title = "Comparison of production areas in different SI classes",
+       subtitle = "Agricultural land available for crop production at SI threshold") +
+  theme_classic() #+ theme(legend.position = "bottom")
+
+plt_hectares_line
+
+# PROTEIN
+plt_protein_line <- 
+  ggplot(df_SI_long_protein %>% filter(SI_class>0), aes(x = SI_class, y = Value, color = Variable)) +
+  geom_line(size = 1) +
+  scale_x_continuous(breaks = seq(0, 100, 5), name = "SI Class") +
+  scale_y_continuous(name = "Protein, million tons") +
+  labs(title = "Comparison of protein production capacity in different SI classes",
+       subtitle = "Total protein production at SI threshold") +
+  theme_classic() # + theme(legend.position = "bottom") # Siirrä legenda kuvaajan alle
+
+plt_protein_line # about 4x more protein, if we convert all gl that are suitable for crop production, to cl
+
+
+
+
+
+# combine
+# library(cowplot)
+# # Yhdistä kaksi kuvaajaa
+# combined_plot <- plot_grid(plt_hectares_line, plt_protein_line, ncol = 2, labels = c("A", "B"), align = "hv")
+# # Tulosta yhdistetty kuvaaja
+# combined_plot
+
+
+
+ggsave(plt_hectares_line, filename = here("Figures", "Linegraph_potential_cl_area_hectares.png"))
+ggsave(plt_protein_line, filename = here("Figures", "Linegraph_potential_protein_production.png"))
+# ggsave(combined_plot, filename = here("Figures", "Linegraph_combined_productions.pdf"))
+
+```
+
+
+
+
+# SAVE RD
+
+```{r}
+#save.image(file='suitability_script_new_method.RData')
+#save.image(file='suitability_script_neg_not_removed.RData')
+
+#save.image(file='suitability_script.RData')
+#load(file='suitability_script.RData')
+#load(file='suitability_script_neg_not_removed.RData')
+```
 
 # Other global sums (old)
 
@@ -1205,86 +1417,4 @@ df_SI <- df_SI %>%
 #   mutate(tibble(cl_PotExp_mean_percent = unlist(mylist_average_exp_percent)))
 ```
 
-
-
-# Ggplot
-
-```{r}
-df_rounded <- round(df_SI, 1)
-# Suodata sarakkeet, joiden nimessä on "Mha"
-
-Mha_columns <- grep("Mha", colnames(df_SI), value = TRUE)
-prot_columns <- grep("protein", colnames(df_SI), value = TRUE)
-
-# Muuta df_SI:n pitkäksi muodoksi
-df_SI_long_Mha <- df_SI %>%
-  dplyr::select(SI_class, all_of(Mha_columns)) %>%
-  # dplyr::select(-c(potential_grazingland_reduction_Mha,
-  #                  potential_grazingland_reduction_cl_mask_Mha,
-  #                  potential_grazingland_reduction_outside_cl_Mha   )) %>% 
-  pivot_longer(cols = -SI_class, names_to = "Variable", values_to = "Value")
-
-
-df_SI_long_protein <- df_SI %>%
-  dplyr::select(SI_class, all_of(prot_columns))  %>% 
-  pivot_longer(cols = -SI_class, names_to = "Variable", values_to = "Value")
-
-
-# HECTARES
-plt_hectares_line <-
-  ggplot(df_SI_long_Mha %>% filter(SI_class>0), aes(x = SI_class, y = Value, color = Variable)) +
-  geom_line(size = 1) +
-  scale_x_continuous(breaks = seq(0, 100, 5), name = "SI Class") +
-  scale_y_continuous(name = "Million of ha") +
-  labs(title = "Comparison of production areas in different SI classes",
-       subtitle = "Agricultural land available for crop production at SI threshold") +
-  theme_classic() #+ theme(legend.position = "bottom")
-
-plt_hectares_line
-
-# PROTEIN
-plt_protein_line <- 
-  ggplot(df_SI_long_protein %>% filter(SI_class>0), aes(x = SI_class, y = Value, color = Variable)) +
-  geom_line(size = 1) +
-  scale_x_continuous(breaks = seq(0, 100, 5), name = "SI Class") +
-  scale_y_continuous(name = "Protein, million tons") +
-  labs(title = "Comparison of protein production capacity in different SI classes",
-       subtitle = "Total protein production at SI threshold") +
-  theme_classic() # + theme(legend.position = "bottom") # Siirrä legenda kuvaajan alle
-
-plt_protein_line
-
-
-
-
-
-# combine
-library(cowplot)
-
-# Yhdistä kaksi kuvaajaa
-combined_plot <- plot_grid(plt_hectares_line, plt_protein_line, ncol = 2, labels = c("A", "B"), align = "hv")
-
-# Tulosta yhdistetty kuvaaja
-combined_plot
-
-
-
-ggsave(plt_hectares_line, filename = here("Figures", "Linegraph_potential_cl_area_hectares.png"))
-ggsave(plt_protein_line, filename = here("Figures", "Linegraph_potential_protein_production.png"))
-# ggsave(combined_plot, filename = here("Figures", "Linegraph_combined_productions.pdf"))
-```
-
-
-
-
-# SAVE RD
-
-```{r}
-save.image(file='suitability_script_new_method.RData')
-#save.image(file='suitability_script_neg_not_removed.RData')
-
-#save.image(file='suitability_script.RData')
-#load(file='suitability_script.RData')
-#load(file='suitability_script_neg_not_removed.RData')
-```
 
