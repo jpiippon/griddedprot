@@ -79,3 +79,27 @@ SI_5arcmin <-
   here("Data", "Input", "Zabel22_SI",
        "SI_5arcmin_overall_suitability_subset1to17_hist1980_2009_current_irr_areas_applied.tif") %>% 
   rast()
+
+
+
+# ----------------------------------------------------------- 7 comparisons
+r_protein_combined_kg_ha <- here("Data", "Intermediate_input", "r_protein_combined_kg_ha.tif") %>%
+  rast()
+
+r_protein_combined_kg_ha_croplandmask <- here("Data", "Intermediate_input", "r_protein_combined_kg_ha_croplandmask.tif") %>%
+  rast()
+
+r_protein_combined_kg_ha_SIbelow10mask_croplandmask <- here("Data", "Intermediate_input", "r_protein_combined_kg_ha_SIbelow10mask_croplandmask.tif") %>%
+  rast()
+
+r_share_of_total_protein_livestock <- here("Data", "Intermediate_input", "r_share_of_total_protein_livestock.tif") %>%
+  rast()
+
+r_share_of_total_protein_livestock_croplandmask <- here("Data", "Intermediate_input", "r_share_of_total_protein_livestock_croplandmask.tif") %>%
+  rast()
+
+r_share_of_total_protein_livestock_SIbelow10mask_croplandmask <- here("Data", "Intermediate_input", "r_share_of_total_protein_livestock_SIbelow10mask_croplandmask.tif") %>%
+  rast()
+
+SI_5arcmin_below10_croplandmask <- here("Data", "Intermediate_input", "SI_5arcmin_below10_croplandmask.tif") %>%
+  rast()

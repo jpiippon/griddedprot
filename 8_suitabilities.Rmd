@@ -130,7 +130,17 @@ r_optimized_grazing_protein_kg_perpix <-
   here("Data", "Intermediate_input","r_optimized_grazing_protein_kg_perpix.tif") %>% 
   rast()
 
+r_optimised_combined_protein_yield_kg_perpix <- 
+  here("Data", "Intermediate_input", "r_optimised_combined_protein_yield_kg_perpix.tif") %>%
+  rast()
 
+r_optimized_combined_protein_yield_larger_percent <- 
+  here("Data", "Intermediate_input", "r_optimized_combined_protein_yield_larger_percent.tif") %>%
+  rast()
+
+r_optimised_protein_crops_mt_perpix <- 
+  here("Data", "Intermediate_input", "r_optimised_protein_crops_mt_perpix.tif") %>%
+  rast()
 
 
 # 

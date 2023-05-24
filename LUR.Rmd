@@ -85,9 +85,9 @@ pal_protein_lajolla <- scico(n = 6, palette = "lajolla", end = 0.85)
                    tocrs = "ESRI:54030",
                    index_main_title = "Current LUR",
                    index_label = "[LUR]",
-                   colorpal = pal_protein_lajolla,
-                     breakvals = c(0, 1, 10, 100, 1000, Inf),
-                     breaknames = c("0-1","1-10","10-100",">100"))) 
+                   colorpal = pal_lur,
+                   breakvals = c(0, 1, 10, 100,  Inf),
+                    breaknames = c("0-1","1-10","10-100",">100"))) 
   # high LUR near Sahara, in Saudi-Arabia -- checked that there's crop production
 
 
@@ -104,9 +104,9 @@ pal_protein_lajolla <- scico(n = 6, palette = "lajolla", end = 0.85)
 #                    index_main_title = "Just a protein ratio (calculated perpix)",
 #                    index_label = "[LUR]",
 #                    colorpal = pal_protein_lajolla,
-#                    breakvals = c(0, 1, 10, 100, 250, 5000, Inf),
-#                    breaknames = c("0-1","1-10","10-100",
-#                                   "100-250","250-5000",  ">5000")))   
+                   # breakvals = c(0, 1, 10, 100, 250, 5000, Inf),
+                   # breaknames = c("0-1","1-10","10-100",
+                   #                "100-250","250-5000",  ">5000")))
 # looks pretty similar when masked to correct areas
 ```
 
@@ -178,10 +178,14 @@ LUR_SI_based_NAto0 <-
   mask(LUR_SI_based_NAto0, r_fraction_gl_cl_total_0toNA)
 
 
-writeRaster(LUR_SI_based_NAto0, 
-            here("Data", "Intermediate_input", "LUR_SI_based_NAto0.tif"),
-            overwrite = T)
+# writeRaster(LUR_SI_based_NAto0, 
+#             here("Data", "Intermediate_input", "LUR_SI_based_NAto0.tif"),
+#             overwrite = T)
 
+################################### get the file
+LUR_SI_based_NAto0 <-
+  here("Data", "Intermediate_input", "LUR_SI_based_NAto0.tif") %>% 
+  rast()
 ```
 
 # Plot LUR
@@ -199,10 +203,9 @@ Find just ratios < 1 and maybe 1-10 and 100 and Inf?
                    tocrs = "ESRI:54030",
                    index_main_title = "LUR when SI>10 areas could be converted to croplands",
                    index_label = "[LUR]",
-                   colorpal = pal_protein_lajolla,
-                   breakvals = c(0, 1, 10, 100, 250, 5000, Inf),
-                   breaknames = c("0-1","1-10","10-100",
-                                  "100-250","250-5000",  ">5000"))) 
+                   colorpal = pal_lur,
+                   breakvals = c(0, 1, 10, 100,  Inf),
+                    breaknames = c("0-1","1-10","10-100",">100"))) 
 
 
 
@@ -211,21 +214,18 @@ Find just ratios < 1 and maybe 1-10 and 100 and Inf?
                    tocrs = "ESRI:54030",
                    index_main_title = "LUR when SI>33 areas could be converted to croplands",
                    index_label = "[LUR]",
-                   colorpal = pal_protein_lajolla,
-                   breakvals = c(0, 1, 10, 100, 250, 5000, Inf),
-                   breaknames = c("0-1","1-10","10-100",
-                                  "100-250","250-5000",  ">5000"))) 
-
+                   colorpal = pal_lur,
+                   breakvals = c(0, 1, 10, 100,  Inf),
+                    breaknames = c("0-1","1-10","10-100",">100"))) 
 
 (plt_LUR75 <- 
   create_index_map(r_index = LUR_SI_based_NAto0[[75]], 
                    tocrs = "ESRI:54030",
                    index_main_title = "LUR when SI>75 areas could be converted to croplands",
                    index_label = "[LUR]",
-                   colorpal = pal_protein_lajolla,
-                   breakvals = c(0, 1, 10, 100, 250, 5000, Inf),
-                   breaknames = c("0-1","1-10","10-100",
-                                  "100-250","250-5000",  ">5000"))) 
+                   colorpal = pal_lur,
+                   breakvals = c(0, 1, 10, 100,  Inf),
+                    breaknames = c("0-1","1-10","10-100",">100"))) 
 
 
 (plt_LUR98 <- 
@@ -233,11 +233,9 @@ Find just ratios < 1 and maybe 1-10 and 100 and Inf?
                    tocrs = "ESRI:54030",
                    index_main_title = "LUR when SI>98 areas could be converted to croplands",
                    index_label = "[LUR]",
-                   colorpal = pal_protein_lajolla,
-                   breakvals = c(0, 1, 10, 100, 250, 5000, Inf),
-                   breaknames = c("0-1","1-10","10-100",
-                                  "100-250","250-5000",  ">5000"))) 
-
+                   colorpal = pal_lur,
+                   breakvals = c(0, 1, 10, 100,  Inf),
+                    breaknames = c("0-1","1-10","10-100",">100"))) 
 
 
 plts_lur <-

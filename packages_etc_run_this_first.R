@@ -10,17 +10,19 @@
 # if (!dir.exists("Data/Output")){ dir.create("Data/Output") }
 
 # Packages etc
-# install.packages('terra', repos='https://rspatial.r-universe.dev')
-# packages <- c("tidyverse", "raster","gdalUtils", "scico",
-#               "sf", "terra", "data.table","here", "tictoc",
-#               "easypackages")
-# not_installed <- packages[!(packages %in% installed.packages()[,"Package"])]
-# if(length(not_installed)){install.packages(not_installed)}
 
-library(tidyverse); library(raster); library(terra); library(sf)
-library(scico); library(tmap); library(data.table)
+# packages <- c("tidyverse",  "scico",
+#               "sf", "terra", "here", "tictoc", "rmapshaper",  "countrycode",
+#               "readxl", "broom", "tidyr")
+# 
+# not_installed <- packages[!(packages %in% installed.packages()[,"Package"])]
+
+
+
+library(tidyverse);  library(terra); library(sf)
+library(scico); library(tmap); 
 library(here); library(tictoc); library(rmapshaper)
-library(PolyTrend); library(countrycode);library(readxl) 
+ library(countrycode);library(readxl) 
 library(broom); library(tidyr)
 
 
