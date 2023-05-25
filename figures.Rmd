@@ -139,6 +139,7 @@ tmap_save(plts_abg_iv_cv,
 
 
 
+
 # Plot Figure 2
 - FCR, protein, kcal from AGB
 
@@ -339,6 +340,7 @@ tmap_save(plts_crops, here("Figures", "27 crops protein energy and SI.pdf"))
 ```
 
 
+
 # Plot comparison part 1
 - total combined protein
 - shares of total protein
@@ -440,7 +442,7 @@ plts_combined_prot_and_shares_and_LUR <-
 )
 #plts_combined_prot_and_shares_and_LUR
 
-tmap_save(plts_combined_prot_and_shares_and_LUR, filename = here("Figures", "plts_combined_prot_and_shares_and_LUR.pdf"))
+#tmap_save(plts_combined_prot_and_shares_and_LUR, filename = here("Figures", "plts_combined_prot_and_shares_and_LUR.pdf"))
 ```
 
 

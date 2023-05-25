@@ -134,32 +134,32 @@ plot(r_protein_combined_kg_ha_SIbelow10mask_croplandmask)
 
 
 # -------------------------------------------- save rasters we need
-writeRaster(r_protein_combined_kg_ha,
-            filename = here("Data", "Intermediate_input", "r_protein_combined_kg_ha.tif"),
-            overwrite = TRUE)
-writeRaster(r_protein_combined_kg_ha_croplandmask,
-            filename = here("Data", "Intermediate_input", "r_protein_combined_kg_ha_croplandmask.tif"),
-            overwrite = TRUE)
-writeRaster(r_protein_combined_kg_ha_SIbelow10mask_croplandmask,
-            filename = here("Data", "Intermediate_input", "r_protein_combined_kg_ha_SIbelow10mask_croplandmask.tif"),
-            overwrite = TRUE)
-
-
-
-writeRaster(r_share_of_total_protein_livestock,
-            filename = here("Data", "Intermediate_input", "r_share_of_total_protein_livestock.tif"),
-            overwrite = TRUE)
-writeRaster(r_share_of_total_protein_livestock_croplandmask,
-            filename = here("Data", "Intermediate_input", "r_share_of_total_protein_livestock_croplandmask.tif"),
-            overwrite = TRUE)
-writeRaster(r_share_of_total_protein_livestock_SIbelow10mask_croplandmask,
-            filename = here("Data", "Intermediate_input", "r_share_of_total_protein_livestock_SIbelow10mask_croplandmask.tif"),
-            overwrite = TRUE)
-
-
-writeRaster(SI_5arcmin_below10_croplandmask,
-            filename = here("Data", "Intermediate_input", "SI_5arcmin_below10_croplandmask.tif"),
-            overwrite = TRUE)
+# writeRaster(r_protein_combined_kg_ha,
+#             filename = here("Data", "Intermediate_input", "r_protein_combined_kg_ha.tif"),
+#             overwrite = TRUE)
+# writeRaster(r_protein_combined_kg_ha_croplandmask,
+#             filename = here("Data", "Intermediate_input", "r_protein_combined_kg_ha_croplandmask.tif"),
+#             overwrite = TRUE)
+# writeRaster(r_protein_combined_kg_ha_SIbelow10mask_croplandmask,
+#             filename = here("Data", "Intermediate_input", "r_protein_combined_kg_ha_SIbelow10mask_croplandmask.tif"),
+#             overwrite = TRUE)
+# 
+# 
+# 
+# writeRaster(r_share_of_total_protein_livestock,
+#             filename = here("Data", "Intermediate_input", "r_share_of_total_protein_livestock.tif"),
+#             overwrite = TRUE)
+# writeRaster(r_share_of_total_protein_livestock_croplandmask,
+#             filename = here("Data", "Intermediate_input", "r_share_of_total_protein_livestock_croplandmask.tif"),
+#             overwrite = TRUE)
+# writeRaster(r_share_of_total_protein_livestock_SIbelow10mask_croplandmask,
+#             filename = here("Data", "Intermediate_input", "r_share_of_total_protein_livestock_SIbelow10mask_croplandmask.tif"),
+#             overwrite = TRUE)
+# 
+# 
+# writeRaster(SI_5arcmin_below10_croplandmask,
+#             filename = here("Data", "Intermediate_input", "SI_5arcmin_below10_croplandmask.tif"),
+#             overwrite = TRUE)
 
 ```
 

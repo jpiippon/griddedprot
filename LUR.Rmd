@@ -246,34 +246,25 @@ tmap_save(plts_lur, filename = here("Figures", "LUR_test_digest.pdf"))
 
 
 # testaa animaatiota
+LUR_SI_based_NAto0_rob <- project(LUR_SI_based_NAto0, "ESRI:54030") # 10 min
 
-# Luodaan lista tmap-objekteista
-# tm_list <- lapply(1:nlayers(LUR_NAto0), function(i) {
-#   tm_shape(LUR_NAto0[[i]]) +
-#     tm_raster(title = paste("Layer", i))
-# })
-# tmap_animation(tm_list, width = 180, height = 150, filename = "LUR_animation.gif")
-# # Luodaan animaatio
-# tmap_animation(tm_list, filename = "animation.gif")
 
-# 
-# 
-# plts_lur_list <-
-#   lapply(1:nlyr(LUR_NAto0), function(i) {
-#     create_index_map(r_index = LUR_NAto0[[i]],
-#                    tocrs = "ESRI:54030",
-#                    index_main_title = paste("Layer", i),
-#                    index_label = "[LUR]",
-#                    colorpal = pal_protein_lajolla,
-#                    breakvals = c(0, 1, 10, 100, 250, 5000, Inf),
-#                    breaknames = c("0-1","1-10","10-100",
-#                                   "100-250","250-5000",  ">5000"))
-# 
-# })
-# 
-# 
-# tmap_animation(plts_lur_list, width = 1200, height = 1000, delay = 20,dpi = 300,
-#                filename = here("Figures", "LUR_animation2.gif"))
+
+plts_lur_list <-
+  lapply(1:nlyr(LUR_SI_based_NAto0_rob), function(i) {
+    create_index_map(r_index = LUR_SI_based_NAto0_rob[[i]],
+                   index_main_title = paste("LUR when SI >", i),
+                   index_label = "[LUR]",
+                   colorpal = pal_lur,
+                  breakvals = c(0, 1, 10, 100,  Inf),
+                    breaknames = c("0-1","1-10","10-100",">100")) # 1h
+
+})
+
+
+tmap_animation(plts_lur_list, width = 1200, height = 1000, delay = 20,dpi = 300,
+               filename = here("Figures", "LUR_animation.gif"))
+
 ```
 
 
