@@ -1,5 +1,6 @@
 *.pdf
 *.jpg
+*.gif
 *.tif
 *.xlsx
 *.csv
@@ -33,6 +34,9 @@ Data/
 Delete/
 Figures/
 old_scripts/
-Text_files/
+Text files/
 Vilma_fcr_repo/
 sendtoGabriel/
+toMatthew/
+Supplementary_materials/
+Submission/

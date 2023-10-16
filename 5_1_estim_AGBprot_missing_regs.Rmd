@@ -1,0 +1,553 @@
+---
+title: "regress_SI_AGB"
+author: "Johannes Piipponen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+! muuta nimet niin, että output rastereista selviää onko AGB vai SPAM
+! Lisää tännekin neg arvojen poisto. Mieti tartteeko lisätä myös 99% poisto -- onko relevantti=
+
+# Estimate protein yields animals can derive from AGB
+
+
+
+# Load data
+
+```{r}
+# AGB protein per ha 
+r_protein_from_AGB_kg_ha <- 
+  here("Data", "Intermediate_input","r_protein_from_AGB_kg_ha.tif") %>% 
+  rast()
+
+
+
+SI_grasses_5arcmin <- 
+  here("Data", "Input", "from_harddrive",
+       "SI_plants19_20_21_5arcmin.tif") %>% 
+  rast()
+
+
+
+# test with current herd structures
+r_protein_and_SI <- c(r_protein_from_AGB_kg_ha$current_herd_str, # !!!!!!! note the name -- I prefer to use this one as it is also elsewhere in my cripts
+                      SI_grasses_5arcmin)
+names(r_protein_and_SI) <- c("current_herd_str", "SI_plant19", "SI_plant20", "SI_plant21")
+
+
+#plot(r_protein_and_SI)
+
+```
+
+# Explore correlations
+
+```{r}
+# different grass species?
+pairs(SI_grasses_5arcmin) # too high correlation amongst them?
+
+df_protein_and_SI_test <- 
+  as.data.frame( c(r_protein_from_AGB_kg_ha$current_herd_str, SI_grasses_5arcmin), 
+                 xy = T)
+df_protein_and_SI_test <- df_protein_and_SI_test %>%
+  na.omit()
+
+correlation_matrix <- cor(df_protein_and_SI_test %>%  dplyr::select(-x,-y)) 
+correlation_matrix
+# especially plant 20 and 21 have very strong correlation (Switchgrass and Reed canary grass)
+
+# check multicollinearity with VIF
+library(car)
+vif_values <- 
+  vif(lm(current_herd_str  ~ plantspecific_suitability_19 + plantspecific_suitability_20+ plantspecific_suitability_21,
+         data = df_protein_and_SI_test))
+vif_values # the situation might be different in different countries. 
+
+
+library(corrplot)
+corrplot(correlation_matrix, method = "circle")
+
+
+
+# mean of grass suitabilities
+pairs(r_protein_and_SI)
+
+df_protein_and_SI_test_mean <- 
+  r_protein_and_SI %>% 
+  as.data.frame(., xy = T) %>% 
+  na.omit() 
+  
+correlation_matrix_mean <-
+  df_protein_and_SI_test_mean %>% 
+  dplyr::select(-x,-y) %>% 
+  cor()
+correlation_matrix_mean # 0.42
+
+
+
+# plot ---- maybe some kind of linearity?
+ggplot(df_protein_and_SI_test_mean[sample(nrow(df_protein_and_SI_test_mean), 1e4), ], 
+       aes(x = current_herd_str , y = SI_plant21)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Scatter Plot",
+       x = "Animal Protein (kg/ha)",
+       y = "Suitability plant 21") +
+  theme_minimal()
+
+```
+
+
+```{r remove outliers function}
+
+# remove_outliers_quantiles <- function(df, lower, upper) {
+#   lower_quantile <- quantile(df$current_herd_str, lower, na.rm = TRUE)
+#   upper_quantile <- quantile(df$current_herd_str, upper, na.rm = TRUE)
+#   return(c(lower_quantile, upper_quantile))
+# }
+
+```
+
+
+# Prepare data for regression
+
+```{r}
+all_countries <- adm10_simple_faoadded
+
+# create list of countries
+country_sf_list <- all_countries %>%
+  mutate(country_sf_list = map(ADMIN, ~filter(adm10_simple_faoadded, ADMIN == .x))) %>%
+  pull(country_sf_list)
+#country_sf_list[[53]] %>% plot() # FI
+
+# find a relevant raster for each country by cropping and masking
+country_raster_list <- map(country_sf_list, ~crop_and_mask(r_protein_and_SI, .x))
+#country_raster_list[[53]] %>% plot() # FI
+
+# Convert to data frame
+country_df_list <- map(country_raster_list, ~as.data.frame(.x, xy = T) %>% as_tibble())
+country_df_list[[53]] # data for regression
+
+# f_outlier_level_list <- function(lowXpercent, topXpercent) {
+#   outlier_level_list <-  map(country_df_list, ~ remove_outliers_quantiles(.x, lowXpercent, topXpercent)) 
+#   return(outlier_level_list)
+# }
+# 
+# 
+# # 
+# country_df_list <-
+#   map2(country_df_list, f_outlier_level_list(0.0, 0.95), ~.x %>%
+#                                    filter(current_herd_str >= .y[1] & current_herd_str <= .y[2]) %>%
+#                                    dplyr::select(-c(x, y)))
+# 
+# country_df_list[[53]]
+```
+
+
+# Linear regression model for different countries
+
+
+```{r}
+# all_countries <- adm10_simple_faoadded
+# 
+# # create list of countries
+# country_sf_list <- all_countries %>%
+#   mutate(country_sf_list = map(ADMIN, ~filter(adm10_simple_faoadded, ADMIN == .x))) %>%
+#   pull(country_sf_list)
+# country_sf_list[[53]] %>% plot() # FI
+# 
+# # find a relevant raster for each country by cropping and masking
+# country_raster_list <- map(country_sf_list, ~crop_and_mask(r_protein_and_SI, .x))
+# country_raster_list[[53]] %>% plot() # FI
+# 
+# # Convert to data frame
+# country_df_list <- map(country_raster_list, ~as.data.frame(.x, xy = T) %>% as_tibble())
+# country_df_list[[53]] # suomen koordinaatit, current_herd_str_protein_kg_ha  ja SI for 3 grasses
+# 
+# 
+# #  find outliers for every country (list again)
+# outlier_level_list <- map_dbl(country_df_list, ~quantile(.x$current_herd_str ,
+#                                                          probs = 0.95, na.rm = T)) # 95 or 99?
+# outlier_level_list[[53]] 
+# 
+# 
+# 
+# 
+# # Filtter so that outliers are removed. Also remove x and y
+# country_df_filtered_list <- 
+#   map2(country_df_list, 
+#        outlier_level_list, ~.x %>% filter(current_herd_str  <= .y) %>% 
+#          
+#          
+#          # maybe add SI >  0? If it improves the model..
+#                                    dplyr::select(-c(x, y)))
+# 
+# country_df_filtered_list[[53]] #  data for regression
+
+
+
+
+# do regression basd on this filtered data -- use  safe function of purrr to avoind troubles
+# Wrapper function for linear regression
+fit_lm_possibly <- function(data) {
+  
+
+  model_output <-
+    lm(current_herd_str ~ SI_plant19  + SI_plant20  + SI_plant21, data = data)
+  
+  
+  model_coef <- model_output %>% 
+    broom::tidy() %>%
+    dplyr::select(term, estimate,  p.value) %>% 
+    pivot_wider(., names_from = term, values_from = c(estimate, p.value))
+  
+  
+  model_stats <- model_output %>% 
+    broom::glance()
+  
+  # Combine model_coef and model_stats into a single row data frame
+  result <- model_coef %>%
+    mutate(r.squared = model_stats$r.squared, # these from model stats
+           adj.r.squared = model_stats$adj.r.squared,
+           AIC = model_stats$AIC,
+           BIC = model_stats$BIC,
+           nobs = model_stats$nobs,
+           sigma = model_stats$sigma,
+           statistic = model_stats$statistic,
+           p.value_Ftest = model_stats$p.value) %>% 
+     rename(estimate_intercept = "estimate_(Intercept)")
+  
+  return(result)
+}
+
+
+
+# Safe version of the linear regression function
+fit_lm_safe <- purrr::possibly(fit_lm_possibly, otherwise = NULL)
+
+
+
+
+model_list <- map(country_df_list, fit_lm_safe)
+model_list[[53]] # FI results
+
+
+# combine nested country_df_list with polygons
+all_countries <- all_countries %>% 
+  mutate(country_df_list = country_df_list,
+         model_list = model_list)
+
+
+
+# clean
+all_countries_cleaned <- all_countries %>% 
+  dplyr::select(ADMIN, ISO_A3_EH, REGION_UN, geom, model_list)
+
+
+
+all_countries_cleaned <- all_countries_cleaned %>%
+  mutate(model_list = map(model_list, ~ as_tibble(.x))) %>%
+  unnest(cols = model_list, keep_empty = T)
+
+#View(all_countries_cleaned)
+
+
+
+```
+
+# Use nearest neighbour to give values for countries with insignificant regression values
+
+```{r}
+
+model_significant <- all_countries_cleaned %>% filter(p.value_Ftest < 0.05) #  countries
+model_nonsignificant <- all_countries_cleaned %>% filter(p.value_Ftest >= 0.05 | is.na(p.value_Ftest)) #  countries
+
+model_significant %>% nrow()
+median(all_countries_cleaned$adj.r.squared, na.rm=T)
+median(all_countries_cleaned$AIC, na.rm=T)
+
+
+
+# Find distances for those 78 countries. First, find centroids (needed for distances)
+p_adm0_centroids_st <- all_countries_cleaned %>% 
+  dplyr::select(ADMIN, geom) %>% 
+  st_centroid()
+
+
+# Filter centroids for countries with significant and non-significant models
+significant_centroids <- p_adm0_centroids_st %>%
+  filter(ADMIN %in% model_significant$ADMIN) 
+
+nonsignificant_centroids <- p_adm0_centroids_st %>%
+  filter(ADMIN %in% model_nonsignificant$ADMIN) 
+
+
+
+
+# Calculate distances between non-significant and significant model centroids
+distTemp <- st_distance(nonsignificant_centroids, significant_centroids) %>% 
+  as_tibble() # 77 rows because we have 77 nonsignificant_centroids. 125 cols as we have 125 significant countries
+# Row = centroid of non-significant countries AND
+# Column = centroid of significant countries BETWEEN
+# So (1,1) from the centroid of country Dhekelia Sovereign Base Area to the centroid of country Indonesia
+# So (1,2) from the centroid of country Dhekelia Sovereign Base Area to the centroid of country Malaysia
+
+
+
+
+
+#Find the index of the closest significant model for each non-significant model
+closest_significant_indices <- apply(distTemp, 1, which.min) # for each row, find the minimum distance, and select the significant column (col) with the shortest distance to the non-significant country (row)
+
+
+#Attach the closest significant models to the non-significant models.
+model_nonsignificant_with_closest <- model_nonsignificant %>%
+  mutate(closest_significant_model = model_significant$ADMIN[closest_significant_indices], 
+         closest_significant_index = closest_significant_indices)
+
+# Combine the table "significant" with non-significant ones, for which the closest significant country is known.
+all_countries_with_replacement <- model_significant %>%
+  bind_rows(model_nonsignificant_with_closest) 
+
+
+
+
+
+
+# -------------------------add intercept and filled suitabiliities for variables
+# Fill estimate_intercept first
+updated_regression_results <- all_countries_with_replacement %>%
+  mutate(
+    estimate_intercept_filled = 
+      ifelse(p.value_Ftest >= 0.05 | is.na(p.value_Ftest),
+             model_significant$estimate_intercept[closest_significant_index],
+             estimate_intercept)
+  )
+
+
+# Define function to fill estimate values
+fill_estimate <- function(df, var) {
+  # Create the variable names dynamically based on the input variable
+  var_estimate <- paste0("estimate_", var) # The name of the estimate variable for this plant
+  var_estimate_filled <- paste0(var_estimate, "_filled") # The name of the filled estimate variable for this plant
+  
+  # Create the new filled estimate variable
+  df <- df %>%
+    mutate(
+      # Use !! to unquote the variable names so that they are evaluated as variables in the dataframe
+      !!var_estimate_filled := 
+        ifelse(p.value_Ftest >= 0.05 | is.na(p.value_Ftest),
+               model_significant[[var_estimate]][closest_significant_index],
+               !!sym(var_estimate))
+    )
+  return(df)
+}
+# := on erikoisoperaattori, joka on saatavilla joissakin R-paketeissa, kuten data.table ja rlang. Se mahdollistaa nimien luomisen ja arvojen määrittämisen dynaamisesti ohjelmointikoodissa. Tässä tapauksessa se mahdollistaa dynaamisesti luotujen muuttujien määrittämisen mutate-funktion sisällä.
+# 
+# sym on funktio, joka kuuluu rlang-pakettiin. Se ottaa merkkijonon ja palauttaa symbolin. Symbolit ovat ohjelmointikielissä yleisiä ja ne edustavat muuttujien nimiä. rlang::sym muuntaa merkkijonon symboliksi, jonka tidyverse-funktiot tunnistavat muuttujaksi. Tämä on välttämätöntä, kun muuttujan nimet luodaan dynaamisesti ohjelmointikoodin suorituksen aikana.
+# 
+
+
+
+# List of variables to fill estimate
+vars_to_fill <- c("SI_plant19", "SI_plant20", "SI_plant21")
+
+# Apply the fill_estimate function to each variable using purrr::reduce
+updated_regression_results <- 
+  reduce(vars_to_fill, fill_estimate, .init = updated_regression_results)
+# Tässä purrr::reduce ottaa kolme argumenttia:
+# vars_to_fill on lista muuttujista, joihin fill_estimate-funktiota sovelletaan.
+# fill_estimate on funktio, jota sovelletaan jokaiseen elementtiin listassa.
+# .init = updated_regression_results kertoo, että toimintoa sovelletaan aluksi updated_regression_results-datakehikkoon.
+
+
+
+# this is the same as:
+# add intercept and filled suitabiliities for variables
+# updated_regression_results <- all_countries_with_replacement %>%
+#   mutate(
+#     estimate_SI_plant19_filled = 
+#       ifelse(p.value_Ftest >= 0.05 | is.na(p.value_Ftest),
+#              model_significant$estimate_SI_plant19[closest_significant_index],
+#              estimate_SI_plant19),
+#     
+#     estimate_SI_plant20_filled = 
+#       ifelse(p.value_Ftest >= 0.05 | is.na(p.value_Ftest),
+#              model_significant$estimate_SI_plant20[closest_significant_index],
+#              estimate_SI_plant20),
+# 
+#     estimate_SI_plant21_filled = 
+#       ifelse(p.value_Ftest >= 0.05 | is.na(p.value_Ftest),
+#              model_significant$estimate_SI_plant21[closest_significant_index],
+#              estimate_SI_plant21),
+#     
+#     estimate_intercept_filled = 
+#       ifelse(p.value_Ftest >= 0.05 | is.na(p.value_Ftest),
+#              model_significant$estimate_intercept[closest_significant_index],
+#              estimate_intercept))
+
+
+# Now we need to convert NA values to 0 (filled columns) as otherwise e.g. Mongolia will be completely NA. This is because some plant suitabilities are NA for Mongolooa
+# Specify the columns to mutate
+vars_to_mutate <- c("estimate_intercept_filled", 
+                    "estimate_SI_plant19_filled", 
+                    "estimate_SI_plant20_filled", 
+                    "estimate_SI_plant21_filled")
+
+# Replace NA values with 0
+updated_regression_results <- updated_regression_results %>%
+  mutate(across(all_of(vars_to_mutate), ~replace_na(., 0)))
+
+```
+
+
+# Check predicted protein yields - create rasters
+
+```{r}
+# Intercept
+r_intercept_grass_SI<- 
+  rasterize(updated_regression_results, template_rast_5arcmin, 
+            field="estimate_intercept_filled")
+
+
+# Beta coefficients
+
+
+# Function to rasterize a given variable
+rasterize_var <- function(var) {
+  var_beta_coef_filled <- paste0("estimate_", var, "_filled") # The name of the filled beta coefficient variable for this plant
+  assign(paste0("r_beta_coef_", var), 
+         rasterize(updated_regression_results, template_rast_5arcmin, field = var_beta_coef_filled),
+         envir = .GlobalEnv)
+}
+
+# Use map to apply the function to each variable
+r_beta_coefficients <- map(vars_to_fill, rasterize_var) %>% 
+  rast()
+
+
+
+# same as 
+# r_beta_coef_plant19 <- 
+#   rasterize(updated_regression_results, template_rast_5arcmin, field="estimate_SI_plant19_filled") # repeat for 3 grasses
+
+
+
+
+r_predicted_AGB_based_protein_yield_kg_ha <-
+  r_intercept_grass_SI + 
+  r_beta_coefficients$estimate_SI_plant19_filled * SI_grasses_5arcmin$plantspecific_suitability_19 + 
+  r_beta_coefficients$estimate_SI_plant20_filled * SI_grasses_5arcmin$plantspecific_suitability_20 + 
+  r_beta_coefficients$estimate_SI_plant21_filled * SI_grasses_5arcmin$plantspecific_suitability_21 
+
+
+pal_protein_lajolla <- scico(n = 6, palette = "lajolla", end = 0.85) 
+
+(plt_animal_protein_predicted <- 
+  create_index_map(r_index = r_predicted_AGB_based_protein_yield_kg_ha,
+                     #r_predicted_protein_yield_outside_cl_but_in_gl_areas_and_in_suitable_areas_kg_ha, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "PREDICTED Animal protein production from aboveground biomass (AGB) ", # outside current croplands 
+                   index_label = "[kg/ha]",
+                   colorpal = pal_protein_lajolla,
+                   breakvals = c(0, 1, 5, 10, 25, 50, Inf), # 1/10 of crops
+                   breaknames = c("0-1","1-5", "5-10",
+                                  "10-25","25-50",  ">50"))) 
+
+
+
+(plt_animalprotein_hydeareas_current_herd_str <- 
+    create_index_map(r_index = r_protein_from_AGB_kg_ha$current_herd_str, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Animal protein production from aboveground biomass (AGB)",
+                     index_label = "[kg/ha]",
+                     colorpal = pal_protein_lajolla,
+                     breakvals = c(0, 1, 5, 10, 25, 50, Inf),
+                     breaknames = c("<1","1-5", "5-10",
+                                  "10-25","25-50",  ">50"))) 
+
+
+writeRaster(r_predicted_AGB_based_protein_yield_kg_ha,
+            filename = here("Data", "Intermediate_input",
+                            "r_predicted_AGB_based_protein_yield_kg_ha.tif"),
+            overwrite =T)
+```
+
+
+# predicted outside current production areas but existing yields on existing production areas
+
+```{r}
+
+r_agb_prot_existing_plus_new_areas_kg_ha <-
+  classify(r_protein_from_AGB_kg_ha$current_herd_str, cbind(NA,0)) + 
+  classify(r_predicted_AGB_based_protein_yield_on_cl_where_agb_prot_yield_not_known_kg_ha, cbind(NA,0))
+
+r_agb_prot_existing_plus_new_areas_kg_ha <- classify(r_agb_prot_existing_plus_new_areas_kg_ha, cbind(0,NA))
+
+
+
+(plt_AGB_protein_predicted_and_existing <-
+  create_index_map(r_index =
+   r_agb_prot_existing_plus_new_areas_kg_ha,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "AGB prot yield predicted plus existing", # outside current croplands
+                   index_label = "[kg/ha]",
+                   colorpal = pal_protein_lajolla,
+                   breakvals = c(0, 1, 5, 10, 25, 50, Inf), # 1/10 of crops
+                   breaknames = c("0-1","1-5", "5-10",
+                                  "10-25","25-50",  ">50")))
+
+names(r_agb_prot_existing_plus_new_areas_kg_ha) <- "protKgha_current_herd"
+
+writeRaster(r_agb_prot_existing_plus_new_areas_kg_ha,
+            filename= here("Data", "Intermediate_input", 
+                           "r_agb_prot_existing_plus_new_areas_kg_ha.tif"),
+            overwrite = T)
+```
+
+
+
+# Mask predicted values for areas where we need the regression results  -- after loading intermediate input
+
+Estimating AGB based protein is useful only in areas where amount of AGB protein is not known but where there could be some AGB based grazing production and thus AGB based protein.
+In other words, grazing lands can expand only when there is cropland in a cell. We know the AGB based protein yields for most of these cells but not all of them.
+Therefore, we need regression results in regions where there is cropland but where the amount of AGB protein is not known
+
+! onko näin? arvioitu proteiini tarvitaan aina niille alueille joilla sitä ei tiedetä. 
+
+```{r}
+#create mask
+r_fraction_cl_where_amount_ofAGBprot_not_known <-
+  mask(r_fraction_cl_0toNA,
+       r_protein_from_AGB_kg_ha$current_herd_str, # note the name ------------ is this even enough? try with pen and paper
+       inverse = T)
+
+plot(r_fraction_cl_where_amount_ofAGBprot_not_known) # corn belt etc visible
+
+
+r_predicted_AGB_based_protein_yield_on_cl_where_agb_prot_yield_not_known_kg_ha <-
+  mask(r_predicted_AGB_based_protein_yield_kg_ha,
+       r_fraction_cl_where_amount_ofAGBprot_not_known)
+
+
+(plt_AGB_protein_predicted_masked_outside_gl <-
+  create_index_map(r_index =
+   r_predicted_AGB_based_protein_yield_on_cl_where_agb_prot_yield_not_known_kg_ha,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "PREDICTED AGB prot yield on croplands where AGB prot yield not known", # outside current croplands
+                   index_label = "[kg/ha]",
+                   colorpal = pal_protein_lajolla,
+                   breakvals = c(0, 1, 5, 10, 25, 50, Inf), # 1/10 of crops
+                   breaknames = c("0-1","1-5", "5-10",
+                                  "10-25","25-50",  ">50")))
+
+
+writeRaster(r_predicted_AGB_based_protein_yield_on_cl_where_agb_prot_yield_not_known_kg_ha,
+            filename = here("Data", "Intermediate_input",
+                            "r_predicted_AGB_based_protein_yield_on_cl_where_agb_prot_yield_not_known_kg_ha.tif"),
+            overwrite = T)
+```
+
+
+
+

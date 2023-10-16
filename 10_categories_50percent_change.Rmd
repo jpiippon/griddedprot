@@ -1,0 +1,699 @@
+Matin ehdottamat kategoriat tässä skriptissä
+
+
+In other words changes in protein production in scenario Current to ALLtoCL 
+
+See recodings:
+-10000 = grazing remainds grazing (No change)
+-7777 = cropland remains cropland (No change)
+-555 = mixed remains mixed (No change)
+1 = mixed to cropland (Moderate)
+333 = mixed to grazing (Moderate)
+1111 = grazing to cropland (Major)
+10000 = converting to cropland is harmful (Major) --> was cropland to grazing (Major) but in this scenario we cannot get more grazing land
+
+
+
+
+# Protein production in different scenarios 
+CURRENT PRODUCTION
+SCENARIO ALL TO CROPLAND
+SCENARIO ALL TO GRAZING LAND (not likely) --> tarvitaanko tätä?
+
+
+
+```{r}
+
+# ----------------------------------------------------  CURRENT PRODUCTION (baseline scenario)
+  # +90% cropland
+r_protein_combined_kg_perpix_whereover90cl <-
+  mask(r_protein_combined_kg_perpix, 
+       r_cl_share_of_agrland_over90)
+
+  # + 90% grazing land
+r_protein_combined_kg_perpix_whereover90gl <-
+  mask(r_protein_combined_kg_perpix, 
+       r_gl_share_of_agrland_over90)
+
+  # mixed
+r_protein_combined_kg_perpix_wheremixed <-
+  mask(r_protein_combined_kg_perpix, 
+       r_gl_cl_share_mixed)
+
+
+
+
+# ---------------------------------------------------- SCENARIO ALL TO CROPLAND
+  # +90% cropland
+r_optimised_combined_protein_yield_kg_perpix_positive_ScenarioALLTOCL_whereover90cl <- 
+  mask(r_optimised_combined_protein_yield_kg_perpix_positive$prot_kgpix_SI1,
+       r_cl_share_of_agrland_over90)
+
+  # + 90% grazing land
+r_optimised_combined_protein_yield_kg_perpix_positive_ScenarioALLTOCL_whereover90gl <-
+  mask(r_optimised_combined_protein_yield_kg_perpix_positive$prot_kgpix_SI1,
+       r_gl_share_of_agrland_over90)
+
+  # mixed
+r_optimised_combined_protein_yield_kg_perpix_positive_ScenarioALLTOCL_wheremixed <-
+  mask(r_optimised_combined_protein_yield_kg_perpix_positive$prot_kgpix_SI1,
+       r_gl_cl_share_mixed)
+
+
+
+# Määritetään proteiinituotannon muutosraja-arvot
+prot_yield_change_bot <- -0.50
+prot_yield_change_top <-  0.50
+
+```
+
+
+
+
+
+# CL remains CL or then CL to GL in scenario Current to ALLtoCL 
+
+
+
+
+```{r}
+# tutkitaan muutosta current to AlltoCL 
+  # jos kasvaa > +50% niin nykyisen gl tulisi muuttua croplandiksi 1111 = grazing to cropland (Major)
+  # jos muutos + - 50% ei muutosta -7777 = cropland remains cropland (No change)
+  # jos muutos > - 50% niin ei kannata muuttaa grazing landia croplandiksi, vaan CltoGl 10000 = cropland to grazing (Major) <-- eipäs vaan harmful conversation
+
+# ensin kartta jossa näkyy molemmat rasterit
+(plt_current_and_ALLtoCL_whereover90cl <- 
+    create_index_map(r_index = c(r_protein_combined_kg_perpix_whereover90cl/1e4,
+                                 r_optimised_combined_protein_yield_kg_perpix_positive_ScenarioALLTOCL_whereover90cl/1e4), 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Protein in Current and in scenario ALLtoCL where over 90% cl",
+                     index_label = "[1e4kg/ha]",
+                     colorpal = pal_protein_lajolla,
+                     breakvals = c(-Inf, 1, 5, 10, 25, 50, Inf),
+                     breaknames = c("<1","1-5", "5-10",
+                                  "10-25","25-50",  ">50"))) 
+
+
+# change
+r_protein_change_currenTO_ALLtoCL_whereover90cl <-
+  (r_optimised_combined_protein_yield_kg_perpix_positive_ScenarioALLTOCL_whereover90cl -
+     r_protein_combined_kg_perpix_whereover90cl) / 
+   r_protein_combined_kg_perpix_whereover90cl
+
+
+pal_LUR_change_percent <-c("darkred", "yellow", "darkblue")
+
+
+(plt_protein_change_scenarioALLtoCL_whereover90CL <-
+    create_index_map(r_index = 100 * r_protein_change_currenTO_ALLtoCL_whereover90cl, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Protein change in %", 
+                     index_label = "[%]",
+                     colorpal = pal_LUR_change_percent,
+                     colorNA = "NA",
+                     breakvals = c(-Inf, prot_yield_change_bot*100, prot_yield_change_top*100, Inf),
+                     breaknames = c(sprintf("<%s%%", prot_yield_change_bot*100),  
+                                    "no change",  
+                                    sprintf(">%s%%", prot_yield_change_top*100))))
+
+
+
+############### recode
+rcl_prot_changeing_90overCL <- 
+  c(-Inf, prot_yield_change_bot, 10000, # jos proteiinisato pienenee 50% tai enemmän kun 90% cl alueet muutetaan kokonaan cl niin cl:ksi muuttaminen haitallista (älä lisää cl) --> mistä tiedetään pitääkö muuttaa GL vai pitääkö vain pitää nykyisellään? Olisiko otsikko 'ALLtoCL change harmful' paras
+    prot_yield_change_bot, prot_yield_change_top, -7777, # Jos muutos vähemmän kuin +-50% niin pidä croplandina
+    prot_yield_change_top, Inf, 1111) %>%  # Jos muutos  +50% tai enemmän niin kannattaa muuttaa gl to cl 1111 = grazing to cropland (Major)
+  matrix(., ncol=3, byrow = T)
+
+r_protein_change_currenTO_ALLtoCL_whereover90cl_recoded <-
+  classify(r_protein_change_currenTO_ALLtoCL_whereover90cl,
+  rcl_prot_changeing_90overCL,
+  right = TRUE, include.lowest = TRUE)
+
+summary(values(r_protein_change_currenTO_ALLtoCL_whereover90cl_recoded)) # gets almost only vals -7777 which is Remains as cl
+values(r_protein_change_currenTO_ALLtoCL_whereover90cl_recoded) %>% unique # not a single 1111 (gl to cl in these 90% cl areas)
+
+(plt_r_protein_change_currenTO_ALLtoCL_whereover90cl_recoded <-
+    create_index_map(r_index = r_protein_change_currenTO_ALLtoCL_whereover90cl_recoded, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Change in prot production from current to ALLtoCL where 90%clAreas", 
+                     index_label = "",
+                     colorpal = pal_LUR_change_percent,
+                     colorNA = "NA",
+                     breakvals = c(-Inf, -5000 , 5000, Inf),
+                     breaknames = c("ClremainsCL",  "GLtoCL", "CLtoGL")))
+# Interpretation:
+# In categorized regions ">90% cropland" there are only cells where CL remains CL
+```
+
+
+# GL remains GL or then GL to CL in scenario Current to ALLtoCL 
+
+In other words changes in protein production in scenario Current to ALLtoCL 
+
+```{r}
+# tutkitaan muutosta current to AlltoCL where >90% GL
+  # jos muutos > - 50% niin ei kannata muuttaa grazing landia croplandiksi alueilla 90% gl, vaan CltoGl (10000 = cropland to grazing (Major)) TAI PIDÄ ENNALLAAN as GL --> paras kirjoita harmful conversation if AlltoCL in GL90% areas
+  # jos kasvaa > +50% niin nykyisen gl tulisi muuttua croplandiksi 1111 = grazing to cropland (Major)
+  # jos muutos + - 50% ei muutosta -10000 = grazing remains grazing (No change)
+
+
+
+# ensin kartta jossa näkyy molemmat rasterit
+(plt_current_and_ALLtoCL_whereover90gl <- 
+    create_index_map(r_index = c(r_protein_combined_kg_perpix_whereover90gl/1e4,
+                                 r_optimised_combined_protein_yield_kg_perpix_positive_ScenarioALLTOCL_whereover90gl/1e4), 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Protein in Current and in scenario ALLtoCL where over 90% gl",
+                     index_label = "[kg/ha]",
+                     colorpal = pal_protein_lajolla,
+                     breakvals = c(0, 1, 5, 10, 25, 50, Inf),
+                     breaknames = c("<1","1-5", "5-10",
+                                  "10-25","25-50",  ">50"))) 
+
+
+
+r_protein_change_currenTO_ALLtoCL_whereover90gl <-
+  (r_optimised_combined_protein_yield_kg_perpix_positive_ScenarioALLTOCL_whereover90gl -
+     r_protein_combined_kg_perpix_whereover90gl) / 
+   r_protein_combined_kg_perpix_whereover90gl
+
+
+
+
+
+
+
+
+(plt_protein_change_scenarioALLtoCL_whereover90GL <-
+    create_index_map(r_index = 100*r_protein_change_currenTO_ALLtoCL_whereover90gl, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Protein change (%) in areas where over 90% GL", 
+                     index_label = "[%]",
+                     colorpal = pal_LUR_change_percent,
+                     colorNA = "NA",
+                     breakvals = c(-Inf, prot_yield_change_bot*100, prot_yield_change_top*100, Inf),
+                     breaknames = c(sprintf("<%s%%", prot_yield_change_bot*100),  
+                                    "no change",  
+                                    sprintf(">%s%%", prot_yield_change_top*100))))
+#GL rem GL in areas where SI < 1
+# GL to CL in most of the areas
+
+
+
+############### recode
+rcl_prot_changeing_90overGL <- 
+  c(-Inf, prot_yield_change_bot, 10000, # jos prot sato pienenee 50% tai enemmän niin gl-cl muuttaminen haitallista (älä lisää cl ) TAI PIDÄ ENNALLAAN? --> ehkä paras kirjoittaa converting to ALLtoCL is harmful in areas where 90% gl
+    prot_yield_change_bot, prot_yield_change_top, -10000,  # Jos muutos vähemmän kuin +-50% niin pidä grazing landina
+    prot_yield_change_top, Inf, 1111) %>%  # Jos muutos  +50% tai enemmän niin kannattaa muuttaa gl to cl = T)
+  matrix(., ncol=3, byrow = T)
+
+
+r_protein_change_currenTO_ALLtoCL_whereover90gl_recoded <-
+  classify(r_protein_change_currenTO_ALLtoCL_whereover90gl,
+  rcl_prot_changeing_90overGL,
+  right = TRUE, include.lowest = TRUE)
+
+
+hist(r_protein_change_currenTO_ALLtoCL_whereover90gl_recoded) # ei kovin montaa 10000 (= conversion harmful), enimmäkseen GLtoCL
+
+
+(plt_r_protein_change_currenTO_ALLtoCL_whereover90gl_recoded <-
+    create_index_map(r_index = r_protein_change_currenTO_ALLtoCL_whereover90gl_recoded, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Change in prot production from current to ALLtoCL where 90%glAreas", 
+                     index_label = "",
+                     colorpal = pal_LUR_change_percent,
+                     colorNA = "NA",
+                     breakvals = c(-Inf, -5000 , 2000, Inf),
+                     breaknames = c("GLremainsGL",  "GLtoCL", "CLtoGL (harmful if ALLtoCL")))
+# Interpretation:
+# A lot of GL remains as GL (regions where SI < 1 mostly)
+# Even more areas where GL to CL is good
+# Some separate places (e.g. Scotland) where GL to CL
+```
+
+
+
+# Mixed remains Mixed or then Mixed to CL or then Mixed to GL in scenario Current to ALLtoCL 
+
+In other words changes in protein production in scenario Current to ALLtoCL 
+
+
+```{r}
+# tutkitaan muutosta current to AlltoCL where mixed
+  # jos muutos > - 50% niin ei kannata muuttaa mixed landia croplandiksi --> pidetään mixed ennallaan tai mix-gl (mutta ei tiedetä tätä) --> voisi kirjoittaa AlltoCL harmful in mixed areas
+  # jos muutos + - 50% ei muutosta -555 = mixed remains mixed (No change)
+  # jos kasvaa > +50% niin nykyiset mixedit muutetaan croplandiksi
+
+# ensin kartta jossa näkyy molemmat rasterit
+(plt_current_and_ALLtoCL_wheremixed <- 
+    create_index_map(r_index = c(r_protein_combined_kg_perpix_wheremixed/1e4,
+                                 r_optimised_combined_protein_yield_kg_perpix_positive_ScenarioALLTOCL_wheremixed/1e4), 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Protein in Current and in scenario ALLtoCL where mixed",
+                     index_label = "[kg/ha]",
+                     colorpal = pal_protein_lajolla,
+                     breakvals = c(0, 1, 5, 10, 25, 50, Inf),
+                     breaknames = c("<1","1-5", "5-10",
+                                  "10-25","25-50",  ">50"))) 
+# increases but not much as anyway a small proportion of area where it could increase?
+
+
+
+r_protein_change_currenTO_ALLtoCL_wheremixed <-
+  (r_optimised_combined_protein_yield_kg_perpix_positive_ScenarioALLTOCL_wheremixed -
+     r_protein_combined_kg_perpix_wheremixed) / 
+   r_protein_combined_kg_perpix_wheremixed
+
+
+
+(plt_protein_change_scenarioALLtoCL_wheremixed <-
+    create_index_map(r_index = 100*r_protein_change_currenTO_ALLtoCL_wheremixed, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Protein change (%) in areas where mixed", 
+                     index_label = "[%]",
+                     colorpal = pal_LUR_change_percent,
+                     colorNA = "NA",
+                     breakvals = c(-Inf, prot_yield_change_bot*100, prot_yield_change_top*100, Inf),
+                     breaknames = c(sprintf("<%s%%", prot_yield_change_bot*100),  
+                                    "no change",  
+                                    sprintf(">%s%%", prot_yield_change_top*100))))
+# protein yield increases in most of the mixed areas
+
+
+
+############### recode
+rcl_prot_changeing_mixed <- 
+  c(-Inf, prot_yield_change_bot, 10000, # jos prot sato pienenee 50% tai enemmän niin cl muuttaminen haitallista (pidä mix tai tee jotain muuta) --> or write conversion AlltoCL harmful in mixed areas eli 10000
+    prot_yield_change_bot, prot_yield_change_top, -555,  # Jos muutos vähemmän kuin +-50% niin pidä mixed mixedinä -555 = mixed remains mixed (No change)
+    prot_yield_change_top, Inf, 1) %>%  # Jos muutos +50% tai enemmän niin kannattaa muuttaa 1 = mixed to cropland (Moderate)
+  matrix(., ncol=3, byrow = T)
+
+
+
+
+r_protein_change_currenTO_ALLtoCL_wheremixed_recoded <-
+  classify(r_protein_change_currenTO_ALLtoCL_wheremixed,
+  rcl_prot_changeing_mixed,
+  right = TRUE, include.lowest = TRUE)
+
+
+hist(r_protein_change_currenTO_ALLtoCL_wheremixed_recoded) # eniten arvoja 1, sitten joitain -555 arvoja ja vain pari 10000
+summary(values(r_protein_change_currenTO_ALLtoCL_wheremixed_recoded))
+unique(values(r_protein_change_currenTO_ALLtoCL_wheremixed_recoded)) # -555, 1, 10000
+
+
+(plt_r_protein_change_currenTO_ALLtoCL_wheremixed_recoded <-
+    create_index_map(r_index = r_protein_change_currenTO_ALLtoCL_wheremixed_recoded, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Change in prot production from current to ALLtoCL where mixed areas", 
+                     index_label = "",
+                     colorpal = pal_LUR_change_percent,
+                     colorNA = "NA",
+                     breakvals = c(-Inf, -500 , 300, Inf),
+                     breaknames = c("MixtoMix",  "MixtoCL", "Harmful if AlltoCL in mixed")))
+# Interpretation:
+# Almost everywhere mixed to CL is good
+# There are regions where mix rem mix
+# Not really harmful conversation in mixed regions
+```
+
+
+# Combine protein recoded rasters for scenario ALLtoCL
+
+- jos muutetaan ALLtoCL skenaarioon, muutos tuottaa parempaa proteiinintuotantoa
+
+```{r}
+# Yhdistä skenaario ALLtoCL
+r_prot_recoded_changes_combined_ALLtoCL <-
+  sum(c(r_protein_change_currenTO_ALLtoCL_whereover90cl_recoded,
+        r_protein_change_currenTO_ALLtoCL_whereover90gl_recoded,
+        r_protein_change_currenTO_ALLtoCL_wheremixed_recoded),
+      na.rm = T)
+
+r_prot_recoded_changes_combined_ALLtoCL %>% unique() # Some minor overlaps. But how many this kind of vals?
+
+
+# Funktion for finding unique values
+countValueTerra_ALLtoCL <- function(value) {
+  vals <- values(r_prot_recoded_changes_combined_ALLtoCL)
+  count <- sum(vals == value, na.rm = TRUE)
+  return(count)
+}
+
+unique_vals_ALLtoCL <-
+  unique(values(r_prot_recoded_changes_combined_ALLtoCL))
+counts_ALLtoCL <- lapply(unique_vals_ALLtoCL, countValueTerra_ALLtoCL)
+df_counts_ALLtoCL <- 
+  tibble(Value = unique_vals_ALLtoCL, 
+         Count = unlist(counts_ALLtoCL))
+
+# This is %
+total_cells_ALLtoCL <- 
+  sum(df_counts_ALLtoCL$Count, na.rm = TRUE)
+df_counts_ALLtoCL$Percentage <- 
+  round((df_counts_ALLtoCL$Count / total_cells_ALLtoCL) * 100, 2)
+df_counts_ALLtoCL 
+df_counts_ALLtoCL$Percentage %>% sum(., na.rm = T) # 99.99
+# Interpretation:
+# -10000 Grazing remains = 18.8%
+# -7777 Cropland remains = 11.7%
+# -555 Mixed remains = 3.4%
+
+# 1 Mixed to cropland = 28.8%
+# 333 Mixed to grazing = 0.01%
+
+# 1111 Grazing to cropland = 35.4%
+# 10000 Cropland to Grazing 1.6% --> this could be labeled as "Harmful conversion"
+
+# EI MUUTOSTA = 34%
+# Grazing to cl + mix to cl kattavat kahdestaan 64%
+
+
+
+
+
+
+######################################################################### Plot
+# Haaleat värit muuttumattomille alueille ja kirkkaat värit muuttuville alueille
+breaknames_updated <- c("Grazing remains", 
+                        "Cropland remains", 
+                        "Mixed remains", 
+                        "Mixed to Cropland", 
+                       # "Mixed to Grazing", 
+                        "Grazing to Cropland", 
+                        "Harmful if convert ALLtoCL") #Cropland to Grazing
+
+
+
+library(RColorBrewer)
+
+#pal_categories <- brewer.pal(7, "Paired") # josta johdettu
+# pal_categories <- c("#A6CEE3", "#C0A2C7", "#1F78B4","#B2DF8A", "#FB9A99", "#33A02C", "#E31A1C")
+# pal_categories <- c("#A6CEE3", "#C0A2C7", "#1F78B4","#B2DF8A",  "#33A02C", "#E31A1C")
+# 
+# pal_categories <- c("#235888", "#4294C7",  "#7FCACC","#044423", "#576F1F", "#A6824C")
+# 
+# pal_categories <- c( "#4294C7",  "#7FCACC","#A6CEE3", "#044423", "#576F1F", "#A6824C")
+
+
+# pal_categories <- brewer.pal(7, "RdYlBu") # josta johdettu
+# pal_categories <- c("#E0F3F8", "#91BFDB", "#4575B4","#FFFFBF","#FC8D59","#FEE090", "#D73027")
+
+#pal_categories <- brewer.pal(7, "RdBu")
+#pal_categories <- c("lightgray", "lightblue", "lightgreen", "blue", "darkgreen", "orange", "red")
+#pal_categories <- c("lightgreen", "lightyellow", "lightgray", "blue", "darkgreen", "#FDB462", "red") # was orange
+#pal_categories <- scico(7, palette = "davos", begin = 0.1, end = 0.9, direction = -1)
+pal_categories <- c("#A6CEE3", "#C0A2C7", "#1F78B4", "#B2DF8A",  "#84B76D", "#FFA500")
+
+(plt_r_prot_recoded_changes_combined_ALLtoCL <- 
+  create_index_map(r_index = r_prot_recoded_changes_combined_ALLtoCL,
+                 tocrs = "ESRI:54030",
+                 index_main_title = "Land use changes for increased protein production: comparing\n current production to scenarios all to cropland / grazing lands",
+                 index_label = "Direction of change. If protein production changes < ±50%, land use remains same)",
+                 colorpal = pal_categories,
+                 # Päivitä raja-arvot ja luokkanimet vastaamaan todellisia arvoja
+                 breakvals = c(-Inf, -9000, -7000, -500, 10, 2000, Inf), # poistettu luokka 5000 luokan 10 jälkeen
+                 breaknames = breaknames_updated))
+
+
+# Do not save yet, final map later
+
+```
+
+
+Etsi ensin alueet joilta saamme outoja tuloksia.
+Sitten tutkitaan näillä alueilla muutosta jos muutettaisiin tällä alueella koko solussa oleva maatalousmaa AGB proteiiniksi. Näin nähdään kasvaako proteiinin määrä
+
+Eli nyt on kahdenlaisia harmful conversion alueita olemassa (tai ehkä 3 erilaista)
+
+Harmful systeemissä +90% GL  (gl to AlltoCL harmful in gl system)
+Harmful systeemissä mixed (gl to AlltoCL harmful in mix system)
+Harmful systeemissä +90% GL (gl to AlltoCL harmful in cl system)
+
+
+```{r}
+# Etsi ensin yleensä harmful alueet
+harmful <-
+  ifel(r_prot_recoded_changes_combined_ALLtoCL > 9999,
+       r_prot_recoded_changes_combined_ALLtoCL,
+       NA)
+
+plot(harmful)
+
+# Onko näitä 90% alueilla --> ei
+mask(harmful,r_cl_share_of_agrland_over90) %>% global(., "sum",na.rm = T)/10000 # 2 cells eli sama kun ei
+# onko mixed alueilla --> on 182
+mask(harmful,r_gl_cl_share_mixed) %>% global(., "sum",na.rm = T)/10000 # 182 cells
+# onko 90% gl alueilla --> on -- voidaan olettaa että kaikki näillä
+mask(harmful,r_gl_share_of_agrland_over90) %>% global(., "sum",na.rm = T)/10000 # 212294
+```
+
+# eli pääasiassa ALLtoCL konversio haitallinen alueilla joilla nyt 90% GL
+
+Etsitään nämä alueet current combined rasterista ja AlltoGL rasterista
+
+```{r}
+r_protein_combined_kg_perpix_whereharmful <-
+  mask(r_protein_combined_kg_perpix, 
+       harmful) # lähtötilanne
+
+# AlltoGL harmful alueilla
+r_optimised_combined_protein_yield_kg_perpix_clCANdec <-
+  here("Data", "Supplementary", "r_optimised_combined_protein_yield_kg_perpix_cl_CAN_dec.tif") %>% 
+  rast() # here cropland CAN DECREASE!
+
+
+r_protein_kgperpix_ALLtoGL_whereharmful <- 
+  mask(r_optimised_combined_protein_yield_kg_perpix_clCANdec$prot_kgpix_SI99,
+       harmful)
+
+
+# Vertaillaan
+r_over90glareas_where_ALLtoGL_produce_moreorless_protein <- # tuottaa jos pos
+  (r_protein_kgperpix_ALLtoGL_whereharmful - r_protein_combined_kg_perpix_whereharmful)/
+  r_protein_combined_kg_perpix_whereharmful
+
+summary(values(r_over90glareas_where_ALLtoGL_produce_moreorless_protein)) # pääosin +
+hist(values(r_over90glareas_where_ALLtoGL_produce_moreorless_protein)) # myös -
+
+# Interpretation:
+# harmful alueilla usein hyödyllistä convert to GL
+  # tämä tapahtuu useimmiten +90% Gl systeemeissä (eli tulee gl to gl ja voisi kirjoittaa mix/gl to grazing tai nintensify grazing)
+# joskus harmful alueilla ei ole hyödyllistä convert to GL
+  # silloin olisi parempi remain as grazing land
+
+
+# Etsitään + ja myös - arvot --> koodataan yhteensopiviksi
+  # reclas matrix
+rcl_prot_changeing_harmful <- 
+  c(-Inf, prot_yield_change_bot, 0, # jos prot sato pienenee 50% tai enemmän niin gl-gl muuttaminen haitallista -- pidä gl as gl
+    prot_yield_change_bot, prot_yield_change_top, 0,  # Jos muutos vähemmän kuin +-50% niin pidä grazing landina mutta tässä matriisissa sellaiset saavat arvon = 0 koska yhdistämme myöhemmin
+    prot_yield_change_top, Inf, 10000) %>%  # Jos muutos  +50% tai enemmän niin kannattaa muuttaa gl to gl tai mix to gl)
+  matrix(., ncol=3, byrow = T)
+
+r_over90glareas_where_ALLtoGL_produce_moreorless_protein_recode <-
+  classify(r_over90glareas_where_ALLtoGL_produce_moreorless_protein,
+  rcl_prot_changeing_harmful,
+  right = TRUE, include.lowest = TRUE)
+
+summary(values(r_over90glareas_where_ALLtoGL_produce_moreorless_protein_recode))
+hist(values(r_over90glareas_where_ALLtoGL_produce_moreorless_protein_recode))
+
+#Tee luokka Grazing intensification
+```
+
+# Yhdistä tämä kategoriakartan kanssa
+
+10000 = mixed OR Grazing to grazing (Moderate) TAI grazing intensification
+
+```{r}
+# recheck unique values
+values(r_prot_recoded_changes_combined_ALLtoCL) %>% unique()
+
+# combine
+r_prot_recoded_changes_combined_ALLtoCL <-
+  sum(c(r_prot_recoded_changes_combined_ALLtoCL,
+    r_over90glareas_where_ALLtoGL_produce_moreorless_protein_recode),
+    na.rm = T)
+
+values(r_prot_recoded_changes_combined_ALLtoCL) %>% unique() # new value 20000 -- good!
+
+```
+
+
+
+# The final categories plot
+
+```{r}
+breaknames_updated <- c("Grazing remains", 
+                        "Cropland remains", 
+                        "Mixed remains", 
+                        "Mixed to Cropland", 
+                       # "Mixed to Grazing", 
+                        "Grazing to Cropland", 
+                        "Grazing intensification") 
+
+library(RColorBrewer)
+
+
+
+
+# pal_categories <- c( "#FFEDA0", "#DFC27D", "#FDBB84", "#B2DF8A", "#33A02C", "#33f1ff")
+# 
+# 
+# (plt_r_prot_recoded_changes_combined_ALLtoCL_alt1 <- 
+#     create_index_map(r_index = r_prot_recoded_changes_combined_ALLtoCL,
+#                      tocrs = "ESRI:54030",
+#                      index_main_title = "Land use changes for increased protein production: comparing 
+# current protein production to scenarios all to cropland / all to grazing lands",
+#                      index_label = "Direction of change. If changes in protein production are less than  ±50%, land use remains the same",
+#                      colorpal = pal_categories,
+#                      # Päivitä raja-arvot ja luokkanimet vastaamaan todellisia arvoja
+#                      breakvals = c(-Inf, -9000, -7000, -500, 10, 2000, Inf), # poistettu luokka 5000 luokan 10 jälkeen
+#                      breaknames = breaknames_updated))
+# 
+# tmap_save(plt_r_prot_recoded_changes_combined_ALLtoCL_alt1,
+#           filename = here("Figures", "Figure 6 alt 1 Categories - where land usage should change or not.pdf"))
+
+
+
+# ---------------------------------------------------------- alternative 2
+
+pal_categories <- c("#A6CEE3", "#C0A2C7", "#1F78B4", "#B2DF8A",  "#84B76D", "#FFA500")
+
+
+(plt_r_prot_recoded_changes_combined_ALLtoCL <- 
+    create_index_map(r_index = r_prot_recoded_changes_combined_ALLtoCL,
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Land use changes for increased protein production: comparing 
+current protein production to scenarios all to cropland / all to grazing lands",
+                     index_label = "Direction of change. If changes in protein production are less than  ±50%, land use remains the same",
+                     colorpal = pal_categories,
+                     # Päivitä raja-arvot ja luokkanimet vastaamaan todellisia arvoja
+                     breakvals = c(-Inf, -9000, -7000, -500, 10, 2000, Inf), # poistettu luokka 5000 luokan 10 jälkeen
+                     breaknames = breaknames_updated))
+
+
+
+tmap_save(plt_r_prot_recoded_changes_combined_ALLtoCL,
+          filename = here("Figures", "Figure 6 Categories - where land usage should change or not_50PERCENT.pdf"))
+
+
+
+
+
+
+unique_vals_ALLtoCL <-
+  unique(values(r_prot_recoded_changes_combined_ALLtoCL))
+counts_ALLtoCL <- lapply(unique_vals_ALLtoCL, countValueTerra_ALLtoCL)
+df_counts_ALLtoCL <- 
+  tibble(Value = unique_vals_ALLtoCL, 
+         Count = unlist(counts_ALLtoCL))
+
+# This is %
+total_cells_ALLtoCL <- 
+  sum(df_counts_ALLtoCL$Count, na.rm = TRUE)
+df_counts_ALLtoCL$Percentage <- 
+  round((df_counts_ALLtoCL$Count / total_cells_ALLtoCL) * 100, 2)
+df_counts_ALLtoCL 
+df_counts_ALLtoCL$Percentage %>% sum(., na.rm = T) # 99.99
+# - 10000  - 19
+# 10000   - 1
+# 1111  - 36
+# - 555   - 8
+# -7777   - 12%
+# 1     - 24%
+
+
+
+
+# save
+writeRaster(r_prot_recoded_changes_combined_ALLtoCL,
+            filename = here("Data", "Intermediate_input",
+                            "r_prot_recoded_changes_combined_ALLtoCL_50PERCENT.tif"))
+```
+
+
+# Mask figure 6 to r_cropland_expansion_percent_positive$MaxFracOfCell_ge75 
+areas
+
+```{r}
+r_cl_expansion_ge75 <-
+  r_cropland_expansion_percent_positive$MaxFracOfCell_ge75
+
+r_cl_expansion_ge75 <-
+  classify(r_cl_expansion_ge75, cbind(0, NA))
+
+
+
+r_prot_recoded_changes_combined_ALLtoCL_whereExpansion_ge75 <-
+  mask(r_prot_recoded_changes_combined_ALLtoCL,
+       r_cl_expansion_ge75)
+
+
+
+(plt_r_prot_recoded_changes_combined_ALLtoCL_whereExpansion_ge75 <- 
+    create_index_map(r_index = r_prot_recoded_changes_combined_ALLtoCL_whereExpansion_ge75,
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Land use changes for increased protein production: comparing 
+current protein production to scenarios all to cropland / all to grazing lands",
+                     index_label = "Direction of change. If changes in protein production are less than  ±50%, land use remains the same",
+                     colorpal = pal_categories,
+                     # Päivitä raja-arvot ja luokkanimet vastaamaan todellisia arvoja
+                     breakvals = c(-Inf, -9000, -7000, -500, 10, 2000, Inf), # poistettu luokka 5000 luokan 10 jälkeen
+                     breaknames = breaknames_updated))
+
+
+
+tmap_save(plt_r_prot_recoded_changes_combined_ALLtoCL_whereExpansion_ge75,
+          filename = here("Figures", "Figure 6 Categories - masked where cl expansion ge 75_50PERCENT.pdf"))
+
+
+
+
+
+```
+
+# how large % of cells in diff classes
+```{r}
+
+countValueTerra_ALLtoCL_clExp_ge75 <- function(value) {
+  vals <- values(r_prot_recoded_changes_combined_ALLtoCL_whereExpansion_ge75)
+  count <- sum(vals == value, na.rm = TRUE)
+  return(count)
+}
+
+unique_vals_ALLtoCL_clExp_ge75 <-
+  unique(values(r_prot_recoded_changes_combined_ALLtoCL_whereExpansion_ge75))
+counts_ALLtoCL_clExp_ge75 <- 
+  lapply(unique_vals_ALLtoCL_clExp_ge75,
+         countValueTerra_ALLtoCL_clExp_ge75)
+df_counts_ALLtoCL_clExp_ge75  <- 
+  tibble(Value = unique_vals_ALLtoCL_clExp_ge75 , 
+         Count = unlist(counts_ALLtoCL_clExp_ge75))
+
+df_counts_ALLtoCL_clExp_ge75
+
+# This is %
+total_cells_ALLtoCL_clExp_ge75 <- 
+  sum(df_counts_ALLtoCL_clExp_ge75$Count, na.rm = TRUE)
+df_counts_ALLtoCL_clExp_ge75$Percentage <- 
+  round((df_counts_ALLtoCL_clExp_ge75$Count / total_cells_ALLtoCL_clExp_ge75) * 100, 2)
+df_counts_ALLtoCL_clExp_ge75 
+
+# 10000 - 1%
+# 1 - 37%
+# 1111 - 41%
+# -7777 - 7%
+# -555  - 12%
+# -10000  - 2%
+
+df_counts_ALLtoCL_clExp_ge75$Percentage %>% sum(., na.rm = T) # 99.99
+ 
+```
+
+
+

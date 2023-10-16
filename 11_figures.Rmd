@@ -1,0 +1,817 @@
+---
+title: "Figures"
+author: "Johannes Piipponen"
+date: "2022-11-04"
+output: html_document
+---
+
+! mieti tarviiko muihinkin karttoihin colorNA = "NA", jotta rasterisolujen seinämät eivät ole harmaita
+
+
+
+
+
+# Color palettes for plotting
+
+```{r}
+#    scico_palette_show()
+pal_npp <- scico(n = 5,begin = 0.6, end = 1, palette = "corkO")
+# scico(n = 6, palette = "bamako", direction = -1, begin = 0.5, end = 1)
+pal_agb <- scico(n = 6, palette = "bamako", direction = -1)
+# pal_protein <- scico(n = 10, palette = "hawaii", begin = 0.05,end = 0.85,
+#                               direction = -1) # use lajolla instead!
+pal_protein_lajolla <- scico(n = 6, palette = "lajolla", begin = 0.15, end = 1, direction = -1) # previously ended 0.85
+
+
+pal_share_nuuk <- scico(n = 7, palette = "nuuk",  direction = -1) 
+pal_fcr <- scico(n = 6, palette = "tokyo", direction = -1)
+pal_lur <- scico(n =4, palette = "imola", direction = -1) 
+pal_cv <-  scico(n = 6, palette = "nuuk", direction = -1)
+
+# test
+pal_protein_test <- 
+  c("#66c2a5", "#a6d854", "#fee08b", "#fdae61", "#f46d43", "#d53e4f")
+pal_share <-  
+  scico(n = 6, palette = "roma", begin = 0.1, end = 0.9, direction = -1) 
+
+```
+
+
+
+# Figure 2
+
+- AGB, FCR and protein from AGB
+
+
+```{r}
+# AGB
+r_agb_5y_med_in_hyde_gl_kg_ha <- 
+  here("Data", "Input", "from_harddrive", 
+       "5y_medAGB_withIGPB6to10or16_in_hydeareas_kg_ha_5arcmin.tif") %>% 
+  rast()
+
+# AGB
+(plt_agb_hyde_over2008_2012_kg_ha <- 
+    create_index_map(r_index = r_agb_5y_med_in_hyde_gl_kg_ha, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Median aboveground biomass (AGB) in Hyde areas over 2008-2012",
+                     index_label = "AGB kg/ha",
+                     colorpal = pal_agb, 
+                     breakvals =  c(-Inf,100,250,1000,1500,2000, Inf),  
+                     breaknames = c( "< 100", "100-250","250-1000",
+                                     "1000-1500", "1500-2000", "> 2000")) )  # !!!!!!!!!!!!!!! ADD explanation to caption that PUF included here!
+
+
+
+
+
+# FCR
+(plt_fcrs <- 
+    create_index_map(r_index =  r_fcr, # or mask to the study area?
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Grass-feed based feed conversion ratios (FCR)",
+                     index_label = "[kg AGB / kg protein]",
+                     colorpal = pal_fcr,
+                     breakvals = c(-Inf,100,200, 300,400,500,Inf),
+                     breaknames = c("<100","100-200","200-300","300-400","400-500", ">500"))) 
+
+
+
+
+
+
+
+
+# ------------------------------------------------------------------- protein
+(plt_animalprotein_hydeareas <- 
+    create_index_map(r_index = r_protein_from_AGB_kg_ha, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Animal protein production from aboveground biomass (AGB)",
+                     index_label = "[kg/ha]",
+                     colorpal = pal_protein_lajolla,
+                     breakvals = c(0, 1, 5, 10, 25, 50, Inf),
+                     breaknames = c("<1","1-5", "5-10",
+                                  "10-25","25-50",  ">50"))) 
+
+
+
+
+
+plts_fig2_AGB_FCR_protein_ <- tmap_arrange(
+  plt_agb_hyde_over2008_2012_kg_ha,
+  plt_fcrs,
+  plt_animalprotein_hydeareas,
+  ncol = 3
+)
+
+plts_fig2_AGB_FCR_protein_ # modify more in illustrator
+
+tmap_save(plts_fig2_AGB_FCR_protein_, filename = 
+            here("Figures", "Figure 2 AGB, FCR and protein from AGB.pdf")) 
+
+```
+
+
+
+
+
+
+
+# Figure 3
+
+- Crops - production, protein and suitabilities
+
+```{r}
+
+# Total production of 27 crops
+(plt_total_production_crops <-
+    create_index_map(r_index = r_global_production_crops_sum_kg_ha, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Combined crop yields of SPAM food crops in 2010",
+                   index_label = "[kg/ha]",
+                   colorpal = pal_agb,
+                   breakvals = c(0,2000,4000,6000, 8000, Inf),
+                   breaknames = c("0-2000","2000-4000",
+                                  "4000-6000","6000-8000",  ">8000"))) 
+#summary(r_global_prod_crops_sum_mt) # median 1400 mean 5700 3rd = 5900
+
+
+
+# Protein, sum of 27 crops
+quantile(values(r_prot_allcrops_sum_kg_ha), probs = c(seq(0,1, by = 0.1666667)), na.rm =T)
+
+(plt_crop_protein <- 
+  create_index_map(r_index = r_prot_allcrops_sum_kg_ha, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Protein production of SPAM food crops in 2010",
+                   index_label = "[kg/ha]",
+                   colorpal = pal_protein_lajolla,
+                   breakvals = c(0, 10, 50, 100, 250, 500, Inf),
+                   breaknames = c("0-10","10-50", "50-100",
+                                  "100-250","250-500",  ">500"))) 
+
+
+
+
+
+
+
+
+
+
+
+# SI, crops --- more about SI classes: https://www.nature.com/articles/s41597-022-01632-8
+  # plot with 30 arcsec instead? Maybe not as everything else is in 5arcmin reso
+SI_5arcmin <- 
+  here("Data", "Input", "Zabel22_SI",
+       "SI_5arcmin_overall_suitability_subset1to17_hist1980_2009_current_irr_areas_applied.tif") %>% 
+  rast()
+
+#
+SI_5arcmin_0_toNA <- classify(SI_5arcmin, cbind(0, NA)) # because we dont want to plot no-suitable land
+
+# pal_SI <- scico(n =3, palette = "bam", begin = 0.6)
+# pal_SI <- scico(n =11, palette = "bam")
+# pal_SI <- pal_SI[c(3,7,11)] # this to get light red, light and dark green values
+
+(plt_SI_v3.0 <- create_index_map(r_index = SI_5arcmin_0_toNA, tocrs = "ESRI:54030",
+                     index_main_title = "Overall suitability indices (SI) for food crops over 1980-2009",
+                     index_label = "",
+                     colorpal = pal_agb,
+                     breakvals =  c(1, 33, 75, Inf),
+                     breaknames = c("Marginally suitable (1 < SI < 33 )", 
+                                    "Moderately suitable (33 <= SI <= 75 )", "Highly suitable (SI > 75)")) )
+
+
+
+
+
+
+
+
+
+# ------------------------------------------------------------- arrange and save
+plts_crops <- tmap_arrange(
+  plt_total_production_crops, #  is this relevant?
+  plt_crop_protein,
+#  plt_crop_kcal,
+  plt_SI_v3.0
+)
+
+plts_crops
+
+tmap_save(plts_crops, 
+          here("Figures", "Figure 3 crop production protein and SI.pdf")) 
+
+```
+
+
+
+# Figure 4
+
+- total combined protein
+- shares of total protein
+- LUR
+
+Masked to 'mixed' areas (areas where both grazing land and cropland comprises 10% or over of agricultural land area in a cell)
+
+Those maps could also be masked to areas where there is cropland and in agricultural land with 1 < SI < 10
+
+
+!! should also total protein be presented? It is interesting that production from marginal lands is just 4.3 / 11.1 = 39%
+
+
+```{r}
+
+
+
+
+# prepare dataset for plotting. Easier to stack the rasters and plot then. Modify names in illustrator
+r_combined_protein_plots <- c(
+  r_protein_combined_kg_ha,
+  r_protein_combined_kg_ha_wheremixed,
+  r_protein_combined_kg_ha_SIbetween1to10mask)
+  
+
+names(r_combined_protein_plots) <- 
+  c("prot_kgha", "prot_kgha_whereMixed", "prot_kgha_SI1to10")
+
+
+r_shares_plot <- c(
+  r_share_of_total_protein_livestock,
+  r_share_of_total_protein_livestock_mixed,
+  r_share_of_total_protein_livestock_SIbetween1to10mask #,
+  # r_share_of_total_energy_livestock,
+  # r_share_of_total_energy_livestock_croplandmask,
+  # r_share_of_total_energy_livestock_SIbelow10mask_croplandmask
+  )
+
+names(r_shares_plot) <- 
+  c("liv_shre_tot_prot", 
+    "liv_shre_tot_prot_wheremixed",
+    "liv_shre_tot_prot_SI1to10mask")
+# ,
+#   "liv_shre_tot_kcal", "liv_shre_tot_kcal_clmask", "liv_shre_tot_kcal_SI10clmasl")
+
+
+# LUR
+# combine LUR rasters
+r_LUR_prediced_combined <- LUR_predicted_nlyr3
+names(r_LUR_prediced_combined) <-   
+  c("LUR", "LUR_wheremixed", "LUR_SI1to10_mask")
+
+
+
+
+# --------------------------------------------------------------- plot
+(plts_combined_protein <- 
+  create_index_map(r_index = r_combined_protein_plots, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "",
+                   index_label = "[kg/ha]",
+                   colorpal = pal_protein_lajolla, 
+                   colorNA = "NA",
+                   breakvals = c(0, 10, 50, 100, 250, 500, Inf),
+                   breaknames = c("0-10","10-50", "50-100",
+                                  "100-250","250-500",  ">500"))) 
+  
+
+(plts_shares<-  
+    create_index_map(r_index = r_shares_plot, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "",
+                     index_label = "[%]",
+                     colorpal = pal_share,
+                     colorNA = "NA",
+                     breakvals = c(0, 10, 25, 50, 75, 90, 100),
+                     breaknames = c("<10", "10-25", "25-50","50-75","75-90", "90-100"))) 
+  
+
+
+# add LUR
+(plt_LUR_predicted <- # works when LUR layers have different names
+  create_index_map(r_index = r_LUR_prediced_combined, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "",
+                   index_label = "[LUR]",
+                   colorpal = pal_lur,
+                   colorNA = "NA",
+                   breakvals = c(0, 1, 5, 10, 100,  Inf),
+                    breaknames = c("0-1","1-5", "5-10","10-100",">100"))) 
+
+
+# ----------------------------------------------------------- protein outside cl
+
+
+plts_combined_prot_and_shares_and_LUR <-
+  tmap_arrange(
+    plts_combined_protein,
+    plts_shares,
+    plt_LUR_predicted,
+  ncol = 3
+)
+plts_combined_prot_and_shares_and_LUR
+
+tmap_save(plts_combined_prot_and_shares_and_LUR, 
+          filename = here("Figures",
+                          "Figure 4 combined_prot_and_shares_and_LUR.pdf"))
+```
+
+
+
+# Figure 5
+
+Plot line graph with ggplot and add LUR here
+
+```{r}
+# Get data
+df_SI_positive <-
+  read_excel(here("Data", "Output", "Total_sums_cropland_expansion_and_optimised_protein_production_positive.xlsx"))
+           
+# round
+df_rounded <- round(df_SI_positive, 1) %>% 
+  dplyr::select(-Protein_from_AGB_decrease_mmt)
+
+#add median LUR value here
+df_LUR_SI_based_NAto0_noXY_medians_positive <-
+  read.csv(here("Data", "Output", "LUR_medians_different_SI_thresholds.csv"))
+
+df_rounded <-
+  left_join(df_rounded,
+            df_LUR_SI_based_NAto0_noXY_medians_positive,
+            by = c("SI_class" = "SI"))
+
+  
+
+df_rounded <- df_rounded %>% 
+  rename("Current grazingland area" = "Current_grazingland_area_total_Mha",
+         "Current cropland area" = "Current_cropland_area_total_Mha",
+         "Current agricultural area" = "Current_agricultural_total_area_Mha",
+         "SI based unrestricted cropland" = "SI_based_unrestricted_cropland_Mha",
+         "SI based restricted cropland" = "SI_based_restricted_max_cropland_Mha",
+         "Potential cropland expansion" = "potential_cropland_expansion_Mha",
+         "Potential cropland expansion outside cropland" = "potential_cropland_expansion_outside_cl_Mha",
+         "Potential cropland expansion on grid cell containing cropland" = "potential_cropland_expansion_cl_mask_Mha",
+         "Original protein from AGB" = "Protein_from_AGB_original_mmt",
+         "Optimised protein from AGB" = "Protein_from_AGB_optimised_mmt",
+         "Original crop protein production" = "Original_crop_protein_production_mmt",
+         "Optimised crop protein" = "Optimised_crop_protein_mmt",
+         "Optimised combined protein" = "Optimised_combined_protein_mmt" ,
+         "Median LUR"= "LUR_median")
+
+# Select columns
+Mha_columns <- 
+  c("Current grazingland area", 
+    "Current cropland area", 
+   # "Current agricultural area",
+  #  "SI based unrestricted cropland", 
+    "SI based restricted cropland",
+    "Potential cropland expansion",
+    "Potential cropland expansion outside cropland") #,
+  #  "Potential cropland expansion on grid cell containing cropland")
+
+prot_columns <- 
+  c(
+    #"Original protein from AGB",
+    "Optimised protein from AGB",
+    "Original crop protein production",
+ #   "Optimised crop protein",
+    "Optimised combined protein") #  "Median LUR"
+
+
+
+# Muuta df_rounded:n pitkäksi muodoksi
+df_SI_long_Mha <- df_rounded %>%
+  dplyr::select(SI_class, all_of(Mha_columns)) %>%
+  pivot_longer(cols = -SI_class, names_to = "Variable", values_to = "Value")
+
+df_SI_long_protein <- df_rounded %>%
+  dplyr::select(SI_class, all_of(prot_columns))  %>% 
+  pivot_longer(cols = -SI_class, names_to = "Variable", values_to = "Value")
+
+df_SI_long_LUR <- df_rounded %>%
+  dplyr::select(SI_class, "Median LUR")  %>% 
+  pivot_longer(cols = -SI_class, names_to = "Variable", values_to = "Value")
+
+
+
+
+
+# Plot
+plt_hectares_line <- 
+  ggplot(df_SI_long_Mha %>% filter(SI_class > 0), 
+         aes(x = SI_class, y = Value, color = Variable, 
+             linetype = ifelse(Variable == "Current grazingland area", 
+                               "dotted", 
+                               ifelse(Variable %in% c("Current cropland area", "Current agricultural area"),
+                                      "dashed", "solid")))) +
+  geom_line(linewidth = 0.7) +
+  scale_x_continuous(breaks = seq(0, 100, 5), name = "SI class") +
+  scale_y_continuous(name = "Area, million hectares") +
+  labs(title = "",
+       subtitle = "Agricultural land available for crop production based on SI thresholds") +
+  scale_color_viridis_d() +
+  scale_linetype_manual(values = c("dashed","dotted", "solid")) +
+  guides(color = guide_legend(title = ""),
+         linetype = guide_legend(title = "")) +  # Updating legend titles
+  theme_classic() +
+  theme(text = element_text(size = 8),
+        legend.position = "bottom",
+        panel.spacing = unit(2, "lines"))
+
+plt_hectares_line
+
+
+# Protein
+plt_protein_line <- 
+  ggplot(df_SI_long_protein %>% filter(SI_class > 0), 
+         aes(x = SI_class, y = Value, color = Variable, 
+             linetype = ifelse(Variable %in% c("Original protein from AGB", "Original crop protein production"),
+                               "dashed", "solid"))) +
+  geom_line(linewidth = 0.7) +
+  scale_x_continuous(breaks = seq(0, 100, 5), name = "SI class") +
+  scale_y_continuous(name = "Protein, million metric tons (mmt)") +
+  labs(title = "",
+       subtitle = "Total protein production based on SI thresholds") +
+  scale_color_viridis_d(option ="inferno", begin = 0.3, direction = -1) +
+  #scale_color_scico_d(palette = "lajolla", begind = 0, end = 0.8) +
+  #scale_color_manual(values = my_palette) +
+  scale_linetype_manual(values = c("dashed", "solid")) +
+  guides(color = guide_legend(title = ""),
+         linetype = guide_legend(title = ""))+
+  theme_classic() +
+  theme(text = element_text(size = 8),
+        legend.position = "bottom",
+        panel.spacing = unit(2, "lines"))
+
+plt_protein_line
+
+
+
+# LUR
+plt_LUR_line <- 
+  ggplot(df_SI_long_LUR %>% filter(SI_class > 0), 
+         aes(x = SI_class, y = Value, color = Variable)) +
+  geom_line(linewidth = 0.7) +
+  scale_x_continuous(breaks = seq(0, 100, 5), name = "SI class") +
+  scale_y_continuous(name = "Median LUR") +
+  labs(title = "",
+       subtitle = "") +
+  scale_color_scico_d(palette = "imola") +
+  theme_classic() +
+  theme(text = element_text(size = 8),
+        legend.position = "bottom",
+        panel.spacing = unit(2, "lines"))
+
+plt_LUR_line
+
+# Combine the two updated plots
+plt_combined <- 
+  grid.arrange(plt_hectares_line,
+               plt_protein_line,
+               plt_LUR_line,
+               ncol = 2)
+plt_combined
+
+
+# ggsave(plt_hectares_line, filename = here("Figures", "Figure 5Linegraph_potential_cl_area_hectares.pdf"))
+# ggsave(plt_protein_line, filename = here("Figures", "Linegraph_potential_protein_production.pdf"))
+ggsave(plt_combined, 
+       filename = here("Figures", "Figure 5 Linegraph_combined_100SIrasters.pdf"))
+
+
+```
+
+# Figure 5 continuation
+
+- Plot SI based land use changes / comparisons II
+
+- cropland expansion 1, 33, 75
+
+```{r}
+#  ----------------------------  cropland expansion 1, 33, 75
+r_cropland_expansion_percent_lyr_SI_1_33_75 <- 
+  subset(r_cropland_expansion_percent_positive, 
+         c("MaxFracOfCell_ge1", "MaxFracOfCell_ge33", "MaxFracOfCell_ge75"))
+names(r_cropland_expansion_percent_lyr_SI_1_33_75) <-
+  c("Cropland expansion when SI threshold ≥ 1", 
+    "Cropland expansion when SI threshold ≥ 33",
+    "Cropland expansion when SI threshold ≥ 75")
+
+# do this to get rid of white value that coours when SI is too high
+r_cropland_expansion_percent_lyr_SI_1_33_75_NAto0 <-
+  classify(r_cropland_expansion_percent_lyr_SI_1_33_75, 
+           cbind(NA,0))
+
+r_cropland_expansion_percent_lyr_SI_1_33_75_NAto0_agrlandmask <-
+  mask(r_cropland_expansion_percent_lyr_SI_1_33_75_NAto0,
+       r_fraction_gl_cl_total_0toNA)
+
+
+
+pal_cl_expansion <- scico(n = 8, palette = "nuuk",  direction = -1) # try different palette?
+
+
+(plt_r_cropland_expansion_percent_lyr_SI_1_33_75 <-
+  create_index_map(r_index = r_cropland_expansion_percent_lyr_SI_1_33_75_NAto0_agrlandmask, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Cropland expansion potential based on suitability restrictions", 
+                   index_label = "[%]",
+                   colorpal = pal_cl_expansion,
+                   colorNA = "NA",
+                   breakvals = c(0, 10, 25, 50, 75, 100, 150, 200, Inf),
+                   breaknames = c("0 to 10", "10 to 25", "25 to 50", "50 to 75", "75 to 100", "100 to 150", "150 to 200", "> 200")))
+
+tmap_save(plt_r_cropland_expansion_percent_lyr_SI_1_33_75,
+          here("Figures", "Figure 5 expansion maps.pdf"))
+
+
+```
+
+
+# ------------------------------------------- not needed
+# Gif experiment
+
+```{r}
+#install.packages("gifski")
+library(gifski)
+
+r_cropland_expansion_percent_positive <- 
+  here("Data", "Intermediate_input", "r_cropland_expansion_percent_positive.tif") %>%
+  rast()
+
+#r_cropland_expansion_percent_positive <- r_cropland_expansion_percent_positive[[10:14]]
+r_cropland_expansion_percent_NAto0 <-
+  classify(r_cropland_expansion_percent_positive, cbind(NA,0))
+
+r_cropland_expansion_percent_NAto0_agrlandmask <-
+  mask(r_cropland_expansion_percent_NAto0,
+       r_fraction_gl_cl_total_0toNA)
+
+
+pal_cl_expansion <- scico(n = 8, palette = "nuuk",  direction = -1) # try different palette?
+
+
+   # r_cropland_expansion_percent_NAto0_agrlandmask 
+plts_r_cropland_expansion_percent_list <-
+  lapply(1:nlyr(r_cropland_expansion_percent_NAto0_agrlandmask), function(i) {
+    create_index_map(r_index = r_cropland_expansion_percent_NAto0_agrlandmask[[i]],
+                     tocrs = "ESRI:54030",
+                     index_main_title = paste("Cropland expansion if all grazing lands with SI ≥", i, 
+                                              "\ncould be used for crop production"),
+                     index_label = "[Cropland expansion in %]",
+                     colorpal = pal_cl_expansion,
+                   breakvals = c(0, 10, 25, 50, 75, 100, 150, 200, Inf),
+                   breaknames = c("0 to 10", "10 to 25", "25 to 50", "50 to 75", "75 to 100", "100 to 150", "150 to 200", "> 200"))
+  })
+
+
+tmap_animation(plts_r_cropland_expansion_percent_list,
+                   width = 1200, height = 1000, delay = 20,dpi = 300,
+                   filename = here("Figures", "Supplementary", "Cropland expansion percent animation.gif"))
+
+
+
+
+
+
+
+
+# ------------------------------------------------------------------- LUR
+LUR_SI_based_NAto0_rob <- project(LUR_SI_based_NAto0_positive, "ESRI:54030") # 10 min
+
+
+plts_lur_list <- lapply(1:nlyr(LUR_SI_based_NAto0_rob), function(i) {
+  create_index_map(r_index = LUR_SI_based_NAto0_rob[[i]],
+                   index_main_title = paste("Land use ratio (LUR)",
+                                            "\nwhen all agricultural land with SI ≥", i,
+                                            "\ncould be used for crop production"),
+                   index_label = "[LUR]",
+                   colorpal = pal_lur,
+                   breakvals = c(0, 1, 10, 100, Inf),
+                   breaknames = c("0-1", "1-10", "10-100", ">100")) # 1h
+})
+
+
+
+tmap_animation(plts_lur_list, width = 1200, height = 1000, delay = 20,dpi = 300,
+               filename = here("Figures", "Supplementary", "LUR_animation.gif"))
+
+
+
+# Lataa magick-paketti
+#install.packages("magick")
+library(magick)
+
+# Lataa molemmat gif-animaatiot kuvina
+animation1 <- image_read(here("Figures", "Supplementary", "Cropland expansion percent animation.gif"))
+animation2 <- image_read(here("Figures", "Supplementary", "LUR_animation.gif"))
+
+
+# Yhdistä GIF-tiedostot sivuttain
+combined_gif <- image_append(c(animation1, animation2))
+
+
+
+# Tallenna yhdistetty GIF
+image_write(combined_gif, here("Figures","Supplementary", "combined_animation Expansion LUR.gif"))
+
+combined_gif2 <- image_append(c(animation1, animation2), stack = TRUE)
+image_write(combined_gif2, here("Figures","Supplementary", "combined_animation Expansion LUR2.gif"))
+```
+
+
+
+
+
+
+
+# Plot SI based land use changes / comparisons II
+
+- cropland expansion 1, 33, 75
+- LUR 1, 33, 75
+
+? need to mask outside croplands? or in croplands
+--> 3 maps for each row --> 4 rows is not impossible --> 1) cl expansion 2) cl expansion on croplands 3) cl exp outside cl
+4) LUR everywhere
+
+
+```{r}
+#  ----------------------------  cropland expansion 1, 33, 75
+r_cropland_expansion_percent_lyr_SI_1_33_75 <- 
+  subset(r_cropland_expansion_percent_positive, 
+         c("MaxFracOfCell_ge1", "MaxFracOfCell_ge33", "MaxFracOfCell_ge75"))
+names(r_cropland_expansion_percent_lyr_SI_1_33_75) <-
+  c("Cropland expansion when SI threshold ≥ 1", 
+    "Cropland expansion when SI threshold ≥ 33",
+    "Cropland expansion when SI threshold ≥ 75")
+
+# convert NA to 0 and then mask to gl+cl areas
+r_cropland_expansion_percent_lyr_SI_1_33_75_NAto0 <-
+  classify(r_cropland_expansion_percent_lyr_SI_1_33_75, cbind(NA,0))
+
+r_cropland_expansion_percent_lyr_SI_1_33_75_NAto0_agrlandmask <-
+  mask(r_cropland_expansion_percent_lyr_SI_1_33_75_NAto0,
+       r_fraction_gl_cl_total_0toNA)
+
+pal_cl_expansion <- scico(n = 8, palette = "nuuk",  direction = -1) # try different palette?
+
+
+(plt_r_cropland_expansion_percent_lyr_SI_1_33_75 <-
+  create_index_map(r_index = r_cropland_expansion_percent_lyr_SI_1_33_75, #r_cropland_expansion_percent_lyr_SI_1_33_75_NAto0_agrlandmask, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "", #Crop expansion potential based on suitability restrictions
+                   index_label = "[%]",
+                   colorpal = pal_cl_expansion,
+                   colorNA = "NA",
+                   breakvals = c(0, 10, 25, 50, 75, 100, 150, 200, Inf),
+                   breaknames = c("0 to 10", "10 to 25", "25 to 50", "50 to 75", "75 to 100", "100 to 150", "150 to 200", "> 200")))
+
+
+
+
+
+
+#  ----------------------------  LUR 1, 33, 75
+LUR_SI_based_NAto0_lyr_SI_1_33_75 <-
+  subset(LUR_SI_based_NAto0, c("LUR_SI_gte1", "LUR_SI_gte33", "LUR_SI_gte75"))
+
+
+(plt_LUR_potential <- 
+  create_index_map(r_index = LUR_SI_based_NAto0_lyr_SI_1_33_75, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "", # Potential LUR based on suitability restrictions
+                   index_label = "[LUR]",
+                   colorpal = pal_lur,
+                   colorNA = "NA",
+                   breakvals = c(0, 1, 10, 100,  Inf),
+                    breaknames = c("0-1","1-10","10-100",">100"))) 
+
+
+
+
+
+# arrange
+plts_combined_cl_expansion_and_potential_LUR <-
+  tmap_arrange(
+    plt_r_cropland_expansion_percent_lyr_SI_1_33_75,
+    plt_LUR_potential,
+    ncol = 2)
+
+plts_combined_cl_expansion_and_potential_LUR
+
+
+
+tmap_save(plts_combined_cl_expansion_and_potential_LUR, 
+          filename = here("Figures", "plts_combined_cl_expansion_and_potential_LUR.pdf"))
+```
+
+
+
+######################################### Old
+
+# Plot comparisons part 2 - potentials --- neeed to think whether this should be presented
+From suitabilities script
+
+```{r}
+# max cropland share
+(plt_max_cropland_share_in_SI_class_1 <-
+      create_dynamic_index_map(r_SIbased_restricted_max_cropland_fraction, 1,
+                               diff_breakvals = c(-Inf, 0.10, 0.20, 0.60, 0.80, 1, Inf),
+"Land area that could be used for crop production when SI threshold ≥ 1"))
+
+
+(plt_max_cropland_share_in_SI_class_33 <-
+      create_dynamic_index_map(r_SIbased_restricted_max_cropland_fraction, 33,
+                               diff_breakvals = c(-Inf, 0.10, 0.20, 0.60, 0.80, 1, Inf),
+"Land area that could be used for crop production when SI threshold ≥ 33"))
+
+
+(plt_max_cropland_share_in_SI_class_75 <-
+      create_dynamic_index_map(r_SIbased_restricted_max_cropland_fraction, 75,
+                               diff_breakvals = c(-Inf, 0.10, 0.20, 0.60, 0.80, 1, Inf),
+"Land area that could be used for crop production when SI threshold ≥ 75"))
+
+
+
+# cropland expansion %
+(plt_cropland_expansion_when_SI_class_ge_1 <- 
+    create_dynamic_index_map(myraster = r_cropland_expansion_percent,
+                             layer_num = 1,
+                             main_title = "Cropland expansion potential when SI threshold ≥ 1"))
+
+
+(plt_cropland_expansion_when_SI_class_ge_33<- 
+    create_dynamic_index_map(myraster = r_cropland_expansion_percent,
+                             layer_num = 33,
+                             main_title = "Cropland expansion potential when SI threshold ≥ 33"))
+
+
+(plt_cropland_expansion_when_SI_class_ge_75<- 
+    create_dynamic_index_map(myraster = r_cropland_expansion_percent,
+                             layer_num = 75,
+                             main_title = "Cropland expansion potential when SI threshold ≥ 75"))
+
+
+
+
+# cropland expansion % outside croplands
+(plt_cropland_expansion_outside_croplands_when_SI_class_ge_1 <-
+    create_dynamic_index_map(myraster = r_cropland_expansion_percent_outside_croplands,
+                             layer_num = 1,
+                             main_title = "Cropland expansion potential outside croplands when SI threshold ≥ 1" ))
+
+(plt_cropland_expansion_outside_croplands_when_SI_class_ge_33 <-
+    create_dynamic_index_map(myraster = r_cropland_expansion_percent_outside_croplands,
+                             layer_num = 33,
+                             main_title = "Cropland expansion potential outside croplands when SI threshold ≥ 33" ))
+
+
+(plt_cropland_expansion_outside_croplands_when_SI_class_ge_75 <-
+    create_dynamic_index_map(myraster = r_cropland_expansion_percent_outside_croplands,
+                             layer_num = 75,
+                             main_title = "Cropland expansion potential outside croplands when SI threshold ≥ 75" ))
+
+
+
+
+
+# yield larger percent
+plt_optimized_protein_yield_larger_when_SI_class_ge_1  <- 
+  create_dynamic_index_map(r_optimized_protein_yield_larger_percent,
+                           layer_num = 1,
+                           main_title = "Optimized combined protein production compared to original protein production (dairy + 27 crops) when SI threshold ≥ 1")
+
+plt_optimized_protein_yield_larger_when_SI_class_ge_33  <- 
+  create_dynamic_index_map(r_optimized_protein_yield_larger_percent,
+                           layer_num = 33,
+                           main_title = "Optimized combined protein production compared to original protein production (dairy + 27 crops) when SI threshold ≥ 33")
+
+plt_optimized_protein_yield_larger_when_SI_class_ge_75  <- 
+  create_dynamic_index_map(r_optimized_protein_yield_larger_percent,
+                           layer_num = 75,
+                           main_title = "Optimized combined protein production compared to original protein production (dairy + 27 crops) when SI threshold ≥ 75")
+
+
+plts_optimized <- 
+tmap_arrange(
+  plt_max_cropland_share_in_SI_class_1,
+  plt_max_cropland_share_in_SI_class_33,
+  plt_max_cropland_share_in_SI_class_75,
+  plt_cropland_expansion_when_SI_class_ge_1,
+  plt_cropland_expansion_when_SI_class_ge_33,
+  plt_cropland_expansion_when_SI_class_ge_75,
+  plt_cropland_expansion_outside_croplands_when_SI_class_ge_1,
+  plt_cropland_expansion_outside_croplands_when_SI_class_ge_33,
+  plt_cropland_expansion_outside_croplands_when_SI_class_ge_75,
+  plt_optimized_protein_yield_larger_when_SI_class_ge_1,
+  plt_optimized_protein_yield_larger_when_SI_class_ge_33,
+  plt_optimized_protein_yield_larger_when_SI_class_ge_75,
+  ncol = 3, nrow = 4
+)
+
+
+
+tmap_save(plts_optimized, here("Figures", "plts_optimised.pdf"))
+
+```
