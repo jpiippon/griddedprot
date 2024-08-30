@@ -1,0 +1,259 @@
+---
+title: "Untitled"
+author: "JP"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# GAEZ attainable grass yields
+
+"For most crops the yields are given in kg dry weight per hectare. For alfalfa, miscanthus, napier grass, reed canary grass, pasture legumes and grasses the yields are in 10 kg dry weight (above ground biomass) per hectare. For sugar beet and sugarcane the yields are in kg sugar per hectare and for olive and oil palm in kg oil per hectare. Cotton yields are given as kg lint per hectare."
+
+! Voi olla että näitä kyseisiä biomassatasoja pitää skaalata AGB/GAEZ_AGB suhteella
+
+
+Estimating AGB based protein is useful only in areas where amount of AGB protein is not known but where there could be some AGB based grazing production and thus AGB based protein.
+In other words, grazing lands can expand only when there is cropland in a cell. We know the AGB based protein yields for most of these cells but not all of them.
+Therefore, we need GAEZ-based results in regions where there is cropland but where the amount of AGB protein is not known
+
+
+```{r}
+
+r_attainable_yield <-
+  list.files(here("Data", "Input", "gaez"), 
+             pattern = ".tif", full.names = T) |> 
+  map(rast) |> 
+  rast()
+
+
+# select grass related GAEZ attainable yields
+r_attainable_yield_grasses <-
+  c(r_attainable_yield$ycLr_alf,# Alfalfa
+    r_attainable_yield$ycHr_nap) # Napier grass --> says that high input but actually input field is empty!!
+    #, 
+#    r_attainable_yield$ycLr_jtr, # Jatropha --> not good for animals (poisonous)
+ #   r_attainable_yield$ycLr_mis, # Miscanthus
+#    r_attainable_yield$ycLr_rcg) # Reed canary grass
+  #  r_attainable_yield$ycLr_swg) # Switchgrass
+
+r_attainable_yield_grasses <-
+  terra::ifel(r_attainable_yield_grasses <= 0, NA,
+              r_attainable_yield_grasses)
+
+# Convert the unit to kg/ha
+r_attainable_yield_grasses_kgDM_ha <-
+  r_attainable_yield_grasses * 10
+
+summary(0.42*r_attainable_yield_grasses_kgDM_ha) # napier grass > alfalfa yields > AGB yields
+
+
+
+
+############################################## ADD LPJmL grass (C3) yields
+##### LPJ
+grass_lpj <- here("Data", "Input", "other", "yield_grass_rainfed_fao_yield_gap.asc") |> rast()
+plot(grass_lpj)
+
+# disaggregate from 0.5 degree to 5arcmin
+grass_lpj_5arcmin <- disagg(grass_lpj, fact = 6)
+
+
+# Combine with GAEZ
+r_attainable_yield_grasses_kgDM_ha <-
+  c(r_attainable_yield_grasses_kgDM_ha, grass_lpj_5arcmin)
+
+plot(r_attainable_yield_grasses_kgDM_ha)
+############################################## 
+
+
+
+# calculate mean yield with na.rm = T
+r_attainable_yield_grasses_kgDM_ha_mean <-
+  mean(r_attainable_yield_grasses_kgDM_ha, na.rm = T)
+plot(r_attainable_yield_grasses_kgDM_ha_mean)
+
+# Save
+writeRaster(r_attainable_yield_grasses_kgDM_ha_mean, 
+            here("Data", "Intermediate_input", "r_GAEZ_LPJmL_attainable_yield_grasses_kgDM_ha_mean_nomask.tif"),
+            overwrite = T)
+
+
+
+
+
+###############################################  Relationship between AGB and GAEZ + LPJ yields
+# mask gaez yield to pixels with AGB data
+r_agb_2020_in_hyde_gl_kg_ha <-
+  here("Data", "Input", "from_harddrive",
+       "AGB2020_withIGPB6to10or16_in_hydeareas_kg_ha_5arcmin.tif") %>% 
+  rast()
+
+r_attainable_yield_grasses_kgDM_ha_mean_glmask <-
+  mask(r_attainable_yield_grasses_kgDM_ha_mean,
+       r_agb_2020_in_hyde_gl_kg_ha)
+
+
+summary(r_agb_2020_in_hyde_gl_kg_ha) # median 360 mean 531 DM kg/ha
+summary(r_attainable_yield_grasses_kgDM_ha_mean_glmask) # median 1500 mean 2500 DM kg/ha
+
+
+r_agb_div_by_gaez_grasses <-
+  classify(r_agb_2020_in_hyde_gl_kg_ha, cbind(NA,0)) / 
+  classify(r_attainable_yield_grasses_kgDM_ha_mean_glmask, cbind(NA,0))
+
+# inf to NA 
+r_agb_div_by_gaez_grasses <- ifel(r_agb_div_by_gaez_grasses == Inf, NA, r_agb_div_by_gaez_grasses)
+
+summary(r_agb_div_by_gaez_grasses) # 
+mean(values(r_agb_div_by_gaez_grasses), na.rm = T ) #  3.2
+median(values(r_agb_div_by_gaez_grasses), na.rm = T ) # 0.229 -- use this to scale the attn yields to AGB yields
+
+
+# -------------------------------------------- results needed outside current gl pixels
+# need to be masked to cropland areas with no grazing land!
+# cropland outside grazing land
+r_cl_outside_gl <- 
+  mask(r_fraction_cl_0toNA, r_fraction_gl_0toNA, inverse = T)
+plot(r_cl_outside_gl, main = "cl outside gl - AGB protein needed for these pixels")
+
+
+r_attainable_yield_grasses_kgDM_ha_mean_on_cl_outside_gl <-
+  mask(r_attainable_yield_grasses_kgDM_ha_mean,
+       r_cl_outside_gl)
+
+
+r_attainable_yield_grasses_kgDM_ha_mean_on_cl_outside_gl_agb_scaled <-
+  r_attainable_yield_grasses_kgDM_ha_mean_on_cl_outside_gl * 
+  (median(values(r_agb_div_by_gaez_grasses), na.rm = T ) )
+
+
+
+summary(0.42*r_attainable_yield_grasses_kgDM_ha_mean_on_cl_outside_gl_agb_scaled) # med 262 mean 315 kg/ha
+
+plot(r_attainable_yield_grasses_kgDM_ha_mean_on_cl_outside_gl_agb_scaled,
+     main = "GAEZ and LpJ avg grass yield (kg DM/ha) - scaled with AGB yields")
+# We assume after scaling PUF (harvest coefficient) etc are already being take into account
+
+
+
+############################### Convert to protein using FCR (assumed PUF = 0.42 already when scaling)
+r_avg_protein_from_GAEZ_grasses_kg_ha_on_cl_outside_gl <-
+  r_attainable_yield_grasses_kgDM_ha_mean_on_cl_outside_gl_agb_scaled / r_fcr
+
+names(r_avg_protein_from_GAEZ_grasses_kg_ha_on_cl_outside_gl) <- "prot_kg_ha"
+
+summary(r_avg_protein_from_GAEZ_grasses_kg_ha_on_cl_outside_gl) # median 3, mean 3.8,,
+# with agb protein median vas 2 and mean 3
+
+
+plot(r_avg_protein_from_GAEZ_grasses_kg_ha_on_cl_outside_gl)
+
+
+## protein per pixel
+r_avg_protein_from_GAEZ_grasses_kg_perpix_on_cl_outside_gl <-
+  r_avg_protein_from_GAEZ_grasses_kg_ha_on_cl_outside_gl * 
+  cellSize(r_avg_protein_from_GAEZ_grasses_kg_ha_on_cl_outside_gl, unit = "ha") *
+  r_cl_outside_gl
+
+names(r_avg_protein_from_GAEZ_grasses_kg_perpix_on_cl_outside_gl) <-
+  "prot_kg_perpix"
+
+global(r_avg_protein_from_GAEZ_grasses_kg_perpix_on_cl_outside_gl, "sum", na.rm = T)/1e9 # 1.1 mmt in X million ha
+
+
+# Save
+  # perpix
+writeRaster(r_avg_protein_from_GAEZ_grasses_kg_perpix_on_cl_outside_gl,
+            here("Data", "Intermediate_input", "avg_protein_from_GAEZ_and_LPJ_grasses_kg_perpix_on_cl_outside_gl.tif"),
+            overwrite = T)
+
+
+  # per ha
+writeRaster(r_avg_protein_from_GAEZ_grasses_kg_ha_on_cl_outside_gl,
+            here("Data", "Intermediate_input", "avg_protein_from_GAEZ_and_LPJ_grasses_kg_ha_on_cl_outside_gl.tif"),
+            overwrite = T)
+
+############ get the file
+r_avg_protein_from_GAEZ_grasses_kg_perpix_on_cl_outside_gl <-
+  here("Data", "Intermediate_input", "avg_protein_from_GAEZ_and_LPJ_grasses_kg_perpix_on_cl_outside_gl.tif") %>% 
+  rast()
+
+r_avg_protein_from_GAEZ_grasses_kg_ha_on_cl_outside_gl <-
+  here("Data", "Intermediate_input", "avg_protein_from_GAEZ_and_LPJ_grasses_kg_ha_on_cl_outside_gl.tif") %>% 
+  rast()
+############ get the file
+
+```
+
+
+
+# GAEZ/LPJ based AGB protein yields outside current gl production areas but existing yields on existing production areas
+
+
+```{r}
+  # perpix
+r_agb_prot_existing_plus_new_areas_kg_perpix <-
+  classify(r_protein_from_AGB_kg_perpix$current_herd_str, cbind(NA,0)) +
+  classify(r_avg_protein_from_GAEZ_grasses_kg_perpix_on_cl_outside_gl, cbind(NA,0))
+
+r_agb_prot_existing_plus_new_areas_kg_perpix <-
+  classify(r_agb_prot_existing_plus_new_areas_kg_perpix, cbind(0,NA))
+names(r_agb_prot_existing_plus_new_areas_kg_perpix) <- "protKgperpix_current_herd"
+
+  # per ha
+r_agb_prot_existing_plus_new_areas_kg_ha <-
+  classify(r_protein_from_AGB_kg_ha$current_herd_str, cbind(NA,0)) + 
+  classify(r_avg_protein_from_GAEZ_grasses_kg_ha_on_cl_outside_gl, cbind(NA,0))
+
+r_agb_prot_existing_plus_new_areas_kg_ha <- classify(r_agb_prot_existing_plus_new_areas_kg_ha, cbind(0,NA))
+
+
+(plt_AGB_protein_gaez_derived_and_existing <-
+  create_index_map(r_index =
+   r_agb_prot_existing_plus_new_areas_kg_ha,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "AGB prot yield GAEZ-derived (outside gl) plus existing", # outside current croplands
+                   index_label = "[kg/ha]",
+                   colorpal = pal_protein_lajolla,
+                   breakvals = c(0, 1, 5, 10, 25, 50, Inf), # 1/10 of crops
+                   breaknames = c("0-1","1-5", "5-10",
+                                  "10-25","25-50",  ">50")))
+
+
+names(r_agb_prot_existing_plus_new_areas_kg_ha) <- "protKgha_current_herd"
+
+
+# SAVE
+writeRaster(r_agb_prot_existing_plus_new_areas_kg_perpix,
+            filename= here("Data", "Intermediate_input", 
+                           "r_agb_prot_existing_plus_new_areas_kg_perpix.tif"),
+            overwrite = T)
+
+writeRaster(r_agb_prot_existing_plus_new_areas_kg_ha,
+            filename= here("Data", "Intermediate_input", 
+                           "r_agb_prot_existing_plus_new_areas_kg_ha.tif"),
+            overwrite = T)
+
+
+############ get the file
+r_agb_prot_existing_plus_new_areas_kg_perpix <-
+  here("Data", "Intermediate_input", "r_agb_prot_existing_plus_new_areas_kg_perpix.tif") %>% 
+  rast()
+
+r_agb_prot_existing_plus_new_areas_kg_ha <-
+  here("Data", "Intermediate_input", "r_agb_prot_existing_plus_new_areas_kg_ha.tif") %>% 
+  rast()
+############ get the file
+
+
+
+
+```
+
+
+
+
+
+# Compare this with regression derived yields
+
+

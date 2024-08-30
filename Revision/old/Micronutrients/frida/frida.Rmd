@@ -1,0 +1,225 @@
+# Data items I need
+
+```{r}
+# These are food items that I am interested
+# Item	spamname	Spam long name
+# Wheat and products	WHEA	Wheat
+# Rice and products	RICE	Rice
+# Barley and products	BARL	Barley
+# Maize and products	MAIZ	Maize
+# Millet and products	PMIL	Pearl Millet
+# Millet and products	SMIL	Small Millet
+# Sorghum and products	SORG	Sorghum
+# Cereals, Other	OCER	Other Cereals
+# Cassava and products	CASS	Cassava
+# Potatoes and products	POTA	Potato
+# Sweet potatoes	SWPO	Sweet Potato
+# Yams	YAMS	Yams
+# Roots, Other	ORTS	Other Roots
+# Beans	BEAN	Bean
+# Pulses, Other and products	CHIC	Chickpea
+# Pulses, Other and products	COWP	Cowpea
+# Pulses, Other and products	PIGE	Pigeon Pea
+# Pulses, Other and products	OPUL	Other Pulses
+# Pulses, Other and products	LENT	Lentil
+# Soyabeans	SOYB	Soybean
+# Groundnuts	GROU	Groundnut
+# Coconuts - Incl Copra	CNUT	Coconut
+# Bananas	BANA	Banana
+# Plantains	PLNT	Plantain
+# Fruits, other	TROF	Other Tropical Fruit
+# Fruits, other	TEMF	Temperate Fruit
+# Vegetables	VEGE	Other Vegetables
+
+# Select rows related to above mentioned foods somehow
+
+```
+
+
+# Load frida data
+
+```{r}
+frida_raw <- 
+  here("Data", "Input", "frida", "Frida_5.1_November_2023.xlsx") |> 
+  read_xlsx()
+
+dim(frida_raw) # 1295, 210 cols
+
+# rename first column: it should be "Food"
+frida_raw <- frida_raw |> rename(Food = 1)
+
+
+frida_clean <- frida_raw %>%
+  select(Food, `Dietary fibre`, `Energy (kcal)`, `Protein`, 
+         `Vitamin A`, `Vitamin D`,  `Vitamin E`, `Vitamin K1`, `Thiamin (Vitamin B1)`,
+         `Riboflavin (Vitamin B2)`, `Niacin`, `Vitamin B6`,`Pantothenic acid`, 
+         `Folate`, `Vitamin B12`, `Vitamin C`,`Sodium`, `Potassium`, 
+         `Calcium`, `Magnesium`, `Iron`, `Copper`, `Zinc`, `Manganese`, `Selenium`, 
+         `Chromium`, `Molybdenum`, `Cobalt`, `Iodine`,
+         `Sum saturated fatty acids`, `Sum monounsaturated fatty acids`, 
+         `Sum polyunsaturated fatty acids`)
+# No carbohydrates, cholesterol, fat, `Retinol`, beta-Carotene` or subcategories of vit D
+
+
+dim(frida_clean) # 1295 rows, 47 cols
+#View(frida_clean)
+
+
+# relevant rows
+search_terms = c(
+  "unit",
+"wheat", "rice", "barley", "maize", "millet", "sorghum", "cereal",
+"cassava", "potato", "sweet potato", "yam", "root", "bean",
+"chickpea", "cowpea", "pigeon pea", "pulse", "lentil", "soy",
+"groundnut", "peanut", "coconut", "banana", "plantain", "fruit",
+"vegetable", "meat", "beef", "veal", "lamb", "mutton", "goat",
+"milk"
+) # removed "cheese", "butter", "cream", "yogurt", "yoghurt"
+
+
+
+frida_clean_relevant_rows <- frida_clean %>%
+  filter(str_detect(tolower(Food), 
+                    paste(c(search_terms), collapse = "|")))
+# not "cheese", "cream", "yogurt", "yoghurt"
+dim(frida_clean_relevant_rows)
+
+
+
+# -------------------------------------------------------- unit harmonization
+# First row describes the units. Based on the values of the first row, find columns where the unit is "g/100g", "mg/100g"or  "µg/100g"
+
+g_cols <-
+  frida_clean_relevant_rows[1, ] %>%
+  pivot_longer(everything(), names_to = "Food", values_to = "Unit") %>%
+  filter(Unit == "g/100g") # protein here
+
+
+# Etsii kaikki sarakkeet, jossa yksikkö sisältää "mg/100g" osana merkkijonoa
+mg_cols <-
+  frida_clean_relevant_rows[1, ] %>%
+  pivot_longer(everything(), names_to = "Food", values_to = "Unit") %>%
+  filter(str_detect(Unit, ".*mg/100g.*"))
+
+mg_cols
+
+# Samanlainen toiminto mikrogrammille, mutta etsitään "µg/100g" sisältävät yksiköt
+ug_cols <-
+  frida_clean_relevant_rows[1, ] %>%
+  pivot_longer(everything(), names_to = "Food", values_to = "Unit") %>%
+  filter(str_detect(Unit, ".*µg/100g.*"))
+
+ug_cols
+
+# päivitä näiden sarakkeiden nimet
+frida_clean_relevant_rows <- frida_clean_relevant_rows %>%
+  rename_with(.fn = ~paste0(., "_µg/100g"), .cols = all_of(ug_cols$Food))
+
+
+
+#### yksikkömuunnos - poistetaan ensin ensimmäinen rivi
+eka_rivi <- frida_clean_relevant_rows[1, ]
+frida_clean_relevant_rows <- frida_clean_relevant_rows[-1, ]
+
+# Convert all NA values to 0 in all but in first column using dplyr
+frida_clean_relevant_rows <- frida_clean_relevant_rows %>%
+  mutate(across(-1, ~ replace(., is.na(.), 0)))
+
+# Muunna milligrammat mikrogrammoiksi ja lisää pääte µg/100g sarakkeiden nimiin
+frida_clean_relevant_rows <- frida_clean_relevant_rows %>%
+  mutate(across(all_of(mg_cols$Food), ~ as.numeric(.) * 1000, .names = "{.col} µg/100g"))
+
+# Muunna grammat mikrogrammoiksi ja lisää pääte µg/100g sarakkeiden nimiin
+frida_clean_relevant_rows <- frida_clean_relevant_rows %>%
+  mutate(across(all_of(g_cols$Food), ~ as.numeric(.) * 1e6, .names = "{.col} µg/100g"))
+
+
+
+# Muuta Vitamin E arvot mikrogrammoiksi ja päivitä sarake
+frida_clean_relevant_rows <- frida_clean_relevant_rows %>%
+  mutate(`Vitamin E` = as.numeric(`Vitamin E`) * 1000) %>%
+  rename(`Vitamin E µg/100g` = `Vitamin E`)
+
+
+#View(frida_clean_relevant_rows)
+
+
+```
+
+
+# Take log +1 of all mikrogram/100g columns
+
+```{r}
+# Luo kopio datasetistä frida_clean_relevant_rows_log
+frida_clean_relevant_rows_log <- frida_clean_relevant_rows
+
+# Logaritmimuunnos sarakkeille, joiden nimi sisältää "µg/100g"
+frida_clean_relevant_rows_log <- frida_clean_relevant_rows %>%
+  mutate(across(contains("µg/100g"), 
+                ~ log1p(as.numeric(.)), 
+                .names = "{col}_log"))
+
+View(frida_clean_relevant_rows_log)
+
+
+# Sum all the log columns
+frida_clean_relevant_rows_log <- frida_clean_relevant_rows_log %>%
+  mutate(`Sum log µg/100g` = rowSums(select(., contains("µg/100g_log")), na.rm = TRUE))
+
+frida_clean_relevant_rows_log <-
+  frida_clean_relevant_rows_log %>%
+  dplyr::select(Food, `Sum log µg/100g`)
+
+View(frida_clean_relevant_rows_log) # ehkä liian tasaiset
+```
+
+
+
+
+
+# Meat and milk
+
+```{r}
+# find from frida_clean_relevant_rows rows where Food contains "meat" or "beef" or "veal" or "lamb" or "mutton" or "goat"
+frida_meatmilk_related <- frida_clean_relevant_rows %>%
+  filter(str_detect(tolower(Food), "meat|beef|veal|lamb|mutton|goat|milk"))
+
+# filter unneccesary rows containing pork, whale, seal, crab, pizza or cheese
+frida_meatmilk_related <- frida_meatmilk_related %>%
+  filter(!str_detect(tolower(Food), "horse|pork|whale|seal|crab|pizza|cheese|dry"))
+
+# Filter out processed meat products and milk products other than plain milk
+frida_meatmilk_related <- frida_meatmilk_related %>%
+  filter(!str_detect(tolower(Food), "sausage|salami|meatballs|meatball|canned|frozen|processed|cheese|yogurt|yoghurt|cream|butter"))
+
+# Filter out meat products with higher fat content (>15%) and ground meat
+ # frida_meatmilk_related <- frida_meatmilk_related %>%
+ #  filter(!str_detect(tolower(Food), "25 %|20 %|15-20%|mince"))
+
+# filter out if contains followin word:# cocoa, chocolate, not raw, oat, almond
+frida_meatmilk_related <- frida_meatmilk_related %>%
+  filter(!str_detect(tolower(Food), 
+                     "cocoa|chocolate|not raw|oat|almond|milkshake|potatoes|human"))
+
+# filter out rows where there is not word "raw" or "milk"
+frida_meatmilk_related <- frida_meatmilk_related %>%
+  filter(str_detect(tolower(Food), "raw|milk"))
+
+
+
+# View the filtered data
+View(frida_meatmilk_related)
+
+
+
+
+
+# Oletetaan, että "Beef, meat, lean (<5 % fat), raw" sisältää:
+# - Proteiinia: 22.1 g/100g
+# - Rautaa: 1.9 mg/100g
+# 
+# Normalisoitu rautapitoisuus = (1.9 mg/100g) / (22.1 g/100g) * 1000 = 85.97 mg/1000g proteiinia
+
+
+```
+

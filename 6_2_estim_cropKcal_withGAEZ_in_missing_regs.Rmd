@@ -1,0 +1,788 @@
+# Gaez KCAL
+
+# Relevant area for GAEZ crops
+
+```{r}
+
+# ne gl alueet joilla ei ole cl alueita
+# LISÄKSI: SI < 1 pois
+gl_areas_with_no_current_cl <- mask(r_fraction_gl_0toNA, r_fraction_cl_0toNA, inverse = T)
+plot(gl_areas_with_no_current_cl, main = "gl areas with no current cl")
+
+# SI_5arcmin already correct SI data
+gl_areas_with_no_current_cl_with_SIgte1 <-
+  mask(gl_areas_with_no_current_cl,
+       ifel(SI_5arcmin < 1, NA, SI_5arcmin) ) # SI already updated tata but doulbe check
+plot(gl_areas_with_no_current_cl_with_SIgte1, main = "suitable gl areas with no current cl")
+
+gl_areas_with_no_current_cl_with_SIgte1
+
+```
+
+# GAEZ attainable yields
+
+Convert to fresh yields (GAEZ originally as DM yields)
+
+
+```{r}
+# List attainable yield raster (all where pattern is tif)
+r_attainable_yield <-
+  list.files(here("Data", "Input", "gaez"), 
+             pattern = ".tif", full.names = T) |> 
+  map(rast) |> 
+  rast()
+
+r_attainable_yield # 48 lyr
+names(r_attainable_yield) # 48 lyr
+r_attainable_yield$ycLr_con |> plot()
+
+# Create df of the GAEZ names under Theme ID 4 'Suitability and Attainable Yield'
+gaez_names <-  tibble(
+  Crop_acronym = c("alf", "ban", "bck", "brl", "bsg", "cab", "car", "chk", "cit", "coc", 
+                   "cof", "con", "cot", "cow", "csv", "flx", "fml", "grd", "grm", "jtr", 
+                   "mis", "mze", "nap", "oat", "olp", "olv", "oni", "pea", "phb", "pig", 
+                   "pml", "rcd", "rcg", "rcw", "rsd", "rub", "rye", "sfl", "soy", "spo", 
+                   "srg", "sub", "suc", "swg", "tea", "tob", "tom", "whe", "wpo", "yam"),
+  Crop_name = c("Alfalfa", "Banana", "Buckwheat", "Barley", "Biomass sorghum", "Cabbage", 
+                "Carrot", "Chickpea", "Citrus", "Cocoa", "Coffee", "Coconut", "Cotton", 
+                "Cowpea", "Cassava", "Flax", "Foxtail millet", "Groundnut", "Gram", "Jatropha", 
+                "Miscanthus", "Maize", "Napier grass", "Oat", "Oil palm", "Olive", "Onion", 
+                "Dry pea", "Phaseolus bean", "Pigeonpea", "Pearl millet", "Dryland rice", 
+                "Reed canary grass", "Wetland rice", "Rapeseed", "Rubber", "Rye", "Sunflower", 
+                "Soybean", "Sweet potato", "Sorghum", "Sugar beet", "Sugar cane", "Switchgrass", 
+                "Tea", "Tobacco", "Tomato", "Wheat", "White potato", "Yam"))
+
+
+# Tibble of GAEZ crop names combined with SPAM crops names
+# Includes also conversio factor that GAEZ has used to conver fresh yields to DM yields
+# conversion factors can be found in table 9-1 in gaez documentation pdf
+combined_data_gaez_spam <- tribble(
+  ~gaezname, ~gaez_long_name, ~spamname, ~spam_long_name, ~conversion_factor,
+  "ban", "Banana", "BANA", "Bananas", 0.25,
+  "brl", "Barley", "BARL", "Barley and products", 0.87,
+  "chk", "Chickpea", "CHIC", "Pulses, Other and products", 1.00,
+  "con", "Coconut", "CNUT", "Coconuts - Incl Copra", 1.00,
+  "cow", "Cowpea", "COWP", "Pulses, Other and products", 1.00,
+  "csv", "Cassava", "CASS", "Cassava and products", 0.35,
+  "grd", "Groundnut", "GROU", "Groundnuts", 0.65,
+  "mze", "Maize", "MAIZ", "Maize and products", 0.86,
+  "soy", "Soybean", "SOYB", "Soybeans", 0.90,
+  "srg", "Sorghum", "SORG", "Sorghum and products", 0.87,
+  "whe", "Wheat", "WHEA", "Wheat and products", 0.87,
+  "pml", "Pearl millet", "PMIL", "Millet and products", 0.90,
+  "phb", "Phaseolus bean", "BEAN", "Beans", 1.00,
+  "pig", "Pigeonpea", "PIGE", "Pulses, Other and products", 1.00,
+  "spo", "Sweet potato", "SWPO", "Sweet potatoes", 0.25,
+  "wpo", "White potato", "POTA", "Potatoes and products", 0.20,
+  "yam", "Yam", "YAMS", "Yams", 0.35,
+  "pea", "Dry pea", "OPUL", "Pulses, Other and products", 1.00,
+  "rcd", "Dryland rice", "DRYLANDRICE", "Rice and products", 0.87,
+  "rcw", "Wetland rice", "WETLANDRICE", "Rice and products", 0.87,
+  "tom", "Tomato", "VEGETOMATOES", "Vegetables", 1.00,
+  "cab", "Cabbage", "VEGECAPPAGES", "Vegetables", 1.00,
+  "oni", "Onion", "VEGEONION", "Vegetables", 1.00,
+  "cit", "Citrus", "TROF", "Fruits, other", 1.00
+) |> 
+  mutate(gaezname_full = paste0("ycLr_", gaezname))
+# OCER, ORTS, LENT, PLNT missing at least --> should we add oat or rye?
+
+############# Select SPAM crops from the GAEZ raster layers
+# Create a vector of GAEZ crop acronyms that match the SPAM crops
+gaez_acronyms <- 
+  gaez_names %>% 
+  filter(Crop_acronym %in% combined_data_gaez_spam$gaezname) %>% 
+  pull(Crop_acronym) # 24
+
+# Create a pattern to match the crop acronyms in the raster layer names
+pattern_gaez <- paste0("ycLr_", gaez_acronyms, collapse = "|")
+
+# Select the raster layers that match the pattern
+r_GAEZattnyld_for_spamcrops <- 
+  subset(r_attainable_yield, 
+         grep(pattern_gaez, names(r_attainable_yield)))
+
+# Convert values (0 or smaller) to NA
+r_GAEZattnyld_for_spamcrops <- 
+  terra::ifel(r_GAEZattnyld_for_spamcrops <= 0, NA,
+              r_GAEZattnyld_for_spamcrops) # still gaez names
+
+plot(r_GAEZattnyld_for_spamcrops)
+
+# Change names to SPAM names --> order must remain the same
+ordered_indices <- 
+  match(combined_data_gaez_spam$gaezname_full,
+        names(r_GAEZattnyld_for_spamcrops))
+
+r_GAEZattnyld_for_spamcrops <-
+  r_GAEZattnyld_for_spamcrops[[ordered_indices]]
+
+names(r_GAEZattnyld_for_spamcrops) <- combined_data_gaez_spam$spamname
+
+
+
+
+
+# ---------------------------------------------------- convert DM to fresh yields
+# r_GAEZattnyld_for_spamcrops_fresh_whea <-
+#   subset(r_GAEZattnyld_for_spamcrops, "WHEA") /
+#   (combined_data_gaez_spam |>
+#      filter(spamname == "WHEA") |>
+#      pull(conversion_factor) )
+
+# or with GAEZ names
+# r_GAEZattnyld_for_spamcrops_fresh_whea <-
+#   subset(r_GAEZattnyld_for_spamcrops, "ycLr_whe") /
+#   (combined_data_gaez_spam |>
+#      filter(gaezname_full == "ycLr_whe") |>
+#      pull(conversion_factor) )
+
+
+# create function for this
+f_DM_to_fresh <-
+  function(select_spamname) {
+    
+    r_GAEZattnyld_for_spamcrops_fresh <-
+      
+    (subset(r_GAEZattnyld_for_spamcrops, 
+            select_spamname)) /
+      
+      (combined_data_gaez_spam |> 
+     filter(spamname == select_spamname) |> 
+     pull(conversion_factor) )
+    
+    return(r_GAEZattnyld_for_spamcrops_fresh)
+  }
+
+# run function for each unique spamnames
+r_GAEZattnyld_for_spamcrops_fresh <-
+  purrr::map(unique(combined_data_gaez_spam$spamname),
+             f_DM_to_fresh) |>  # creates a list
+  rast() # creates a rast out of list --> 24 lyr
+  
+
+
+
+
+
+# ------------------------------------------------------------------------------- EDIT: all of these could be plotted in facet in supplementary --> only when converted to fresh matter
+plot(r_GAEZattnyld_for_spamcrops_fresh)
+
+
+# -------------------------------------------------------- mask to relevant area
+r_GAEZattnyld_for_spamcrops_fresh_relevant_areas <-
+  mask(r_GAEZattnyld_for_spamcrops_fresh,
+       gl_areas_with_no_current_cl_with_SIgte1)
+
+plot(r_GAEZattnyld_for_spamcrops_fresh_relevant_areas) # fresh
+
+
+```
+
+
+
+
+
+# Create new fbs_crop_wide where additional GAEZ crops
+
+```{r}
+foodBalanceSheets_semiraw <-
+  here("Data", "Input", "faostat", "foodBalanceSheets_E_All_Data_NOFLAG.csv") %>%
+  read.csv() %>%
+  dplyr::select(-Element.Code,-Unit , -c(Y2010:Y2019), -c(Y2021)) #
+names(foodBalanceSheets_semiraw)
+
+# ---------------------------------------------------------- crops
+my_itemlist_fao <- c(  # in mapspam webpage order
+  "Wheat and products", "Rice and products","Maize and products",
+  "Barley and products", "Millet and products", "Sorghum and products",
+  "Cereals, Other", "Potatoes and products", "Sweet potatoes",
+  "Yams", "Cassava and products", "Roots, Other",  
+  "Beans", "Peas", "Pulses, Other and products",
+  "Soyabeans","Groundnuts", "Coconuts - Incl Copra",
+  "Bananas", "Plantains", "Fruits, other", "Vegetables" # categories for SPAM names
+)
+
+my_elementlist_fao <- c(
+  "Production","Food supply quantity (kg/capita/yr)",
+  "Food supply (kcal/capita/day)", "Protein supply quantity (g/capita/day)"
+)
+
+
+## filter
+fbs_crops <- foodBalanceSheets_semiraw  %>% 
+  filter(Item %in% my_itemlist_fao,
+         Element %in% my_elementlist_fao)
+
+
+
+## to wide format. Select only relevant variables
+fbs_crops_wide_gaez <- fbs_crops %>% 
+  pivot_wider(names_from = Element, values_from = Y2020) %>% # 2020 
+  rename(prod_1000mt = "Production",
+         supply.KgCapYr = "Food supply quantity (kg/capita/yr)",
+         supply.KcalCapD = "Food supply (kcal/capita/day)",
+         prot.gCapD = "Protein supply quantity (g/capita/day)") 
+
+
+
+## add column where item names corresponds to mapsmap names
+## see Definitions and standards - Food Balances (2010-) for the classes
+## cannot add information for all crops like this -- add MILL, COWP, PIGE, OPUL, LENT, TROF afterwards
+fbs_crops_wide_gaez <- fbs_crops_wide_gaez %>% 
+  mutate(spamname = case_when(
+    Item == "Wheat and products" ~ "WHEA",
+    Item == "Rice and products"  ~ "RICE",
+    Item == "Barley and products" ~ "BARL",
+    Item == "Maize and products" ~ "MAIZ",
+    Item == "Millet and products"  ~ "PMIL", 
+    #    Item == "Millet and products"  ~ "MILL", # ei toimi koska 2x Millet and products
+    Item == "Sorghum and products"  ~ "SORG",
+    Item == "Cereals, Other"   ~ "OCER",
+    Item == "Potatoes and products" ~ "POTA",
+    Item == "Sweet potatoes"  ~ "SWPO",
+    Item == "Yams"  ~ "YAMS",
+    Item == "Cassava and products"   ~ "CASS",    
+    Item == "Roots, Other"  ~ "ORTS",
+    Item == "Beans"  ~ "BEAN",
+    Item == "Pulses, Other and products"  ~ "CHIC", 
+    #    Item == "Pulses, Other and products" ~ "COWP", 
+    #    Item == "Pulses, Other and products" ~ "PIGE",     
+    #    Item == "Pulses, Other and products"  ~ "OPUL", 
+    #    Item == "Pulses, Other and products"  ~ "LENT", 
+    Item == "Soyabeans"  ~ "SOYB",
+    Item == "Groundnuts"   ~ "GROU",
+    Item == "Coconuts - Incl Copra"  ~ "CNUT",
+    Item == "Bananas"  ~ "BANA",  
+    Item == "Plantains"  ~ "PLNT",
+    Item == "Fruits, other"  ~ "TROF",    
+    #    Item == "Fruits, other"  ~ "TEMF",    
+    Item == "Vegetables"  ~ "VEGE"
+  ))
+
+
+# could be done with function but was faster like this..
+additional_rows <- list(
+  fbs_crops_wide_gaez %>% filter(Item == "Millet and products") %>% mutate(spamname = "MILL"),
+  fbs_crops_wide_gaez %>% filter(Item == "Pulses, Other and products") %>% mutate(spamname = "COWP"),
+  fbs_crops_wide_gaez %>% filter(Item == "Pulses, Other and products") %>% mutate(spamname = "PIGE"),
+  fbs_crops_wide_gaez %>% filter(Item == "Pulses, Other and products") %>% mutate(spamname = "OPUL"),
+  fbs_crops_wide_gaez %>% filter(Item == "Pulses, Other and products") %>% mutate(spamname = "LENT"),
+  fbs_crops_wide_gaez %>% filter(Item == "Fruits, other") %>% mutate(spamname = "TEMF"),
+  
+  # !!
+  # These rows added only when combining GAEZ attainable yields 
+  fbs_crops_wide_gaez %>% filter(Item == "Rice and products") %>% mutate(spamname = "DRYLANDRICE"),
+  fbs_crops_wide_gaez %>% filter(Item == "Rice and products") %>% mutate(spamname = "WETLANDRICE"),
+  fbs_crops_wide_gaez %>% filter(Item == "Vegetables") %>% mutate(spamname = "VEGETOMATOES"),
+  fbs_crops_wide_gaez %>% filter(Item == "Vegetables") %>% mutate(spamname = "VEGECAPPAGES"),
+  fbs_crops_wide_gaez %>% filter(Item == "Vegetables") %>% mutate(spamname = "VEGEONION"))
+
+fbs_crops_wide_gaez <- fbs_crops_wide_gaez %>% 
+  bind_rows(additional_rows)
+
+
+
+
+
+
+
+
+
+# ------------------------- Calculate fraction of protein and kcal in a product (conversion factor) 
+## protein and kcal
+fbs_crops_wide_gaez <- fbs_crops_wide_gaez %>% 
+  mutate(protein_fraction = (prot.gCapD * 365 / 1000) / supply.KgCapYr,
+         kcalPerKg = (supply.KcalCapD * 365)/ supply.KgCapYr)  %>% 
+  mutate(one_kg_prot_to_kcal =  (supply.KcalCapD / prot.gCapD) * 1000) |> 
+  
+  ## remove cases where supply = 0 (cases that yield NA values)  
+  ## # also converts NaN to NA
+  mutate_all(function(x) ifelse(is.nan(x) | is.infinite(x), NA, x)) 
+
+
+
+
+# ---------------------------------------------------------- Fill empty rows
+# Create a function that fills empty values of cols protein_fraction, kcalPerKg and one_kg_prot_to_kcal
+f_fill_missing_nutritient_values_crops <- function(cropname_mapspam) {
+  
+  ## pull protein fraction for spesific crop
+  protein_fraction_spamcrop <- fbs_crops_wide_gaez %>% 
+    filter(spamname == cropname_mapspam, Area == "World") %>%
+    pull(protein_fraction)
+  
+  
+  ## pull KcalPerKg for spesific crop
+  KcalPerKg_spamcrop <- fbs_crops_wide_gaez %>% 
+    filter(spamname == cropname_mapspam, Area == "World") %>%
+    pull(kcalPerKg)
+  
+  ## pull one_kg_prot_to_kcal for spesific crop
+  one_kg_prot_to_kcal_spamcrop <- fbs_crops_wide_gaez %>% 
+    filter(spamname == cropname_mapspam, Area == "World") %>%
+    pull(one_kg_prot_to_kcal)
+  
+  
+  ## fill empty protein fraction and kcalPerKg with global averages
+  fbs_crops_wide_gaez_filled <- fbs_crops_wide_gaez %>% 
+    filter(spamname == cropname_mapspam) %>%
+    ## fill protein_fraction column
+    mutate(protein_fraction = 
+             ifelse(is.na(protein_fraction) | protein_fraction == 0 , # if protein fraction = NA or 0,
+                    protein_fraction_spamcrop, # fill with the global average value
+                    protein_fraction)) %>% # otherwise let it just be
+    
+    ## fill KcalPerKg column
+    mutate(kcalPerKg = 
+             ifelse(is.na(kcalPerKg) | kcalPerKg == 0 , 
+                    KcalPerKg_spamcrop,
+                    kcalPerKg)) |> 
+    
+    ## fill one_kg_prot_to_kcal column
+    mutate(one_kg_prot_to_kcal = 
+             ifelse(is.na(one_kg_prot_to_kcal) | one_kg_prot_to_kcal == 0 , 
+                    one_kg_prot_to_kcal_spamcrop,
+                    one_kg_prot_to_kcal))
+  
+  return(fbs_crops_wide_gaez_filled)
+}
+
+
+
+test1 <- f_fill_missing_nutritient_values_crops("SOYB") # returns a df
+
+# Lapply this for all the crops --> returns a list
+fbs_crops_wide_gaez_filled_list <- 
+  lapply(fbs_crops_wide_gaez$spamname |> unique(),
+         f_fill_missing_nutritient_values_crops) 
+
+
+
+
+# next we use bind_rows to make this reasonable looking dataframe
+fbs_crops_wide_gaez_filled <- bind_rows(fbs_crops_wide_gaez_filled_list)
+
+
+
+```
+
+
+
+# Convert yields to PROTEIN
+
+same as previously
+
+```{r}
+#------------------------------------------------------- crop protein production
+  ## create a function to convert crop production to protein
+
+f_crop_protein_production_kg_ha_GAEZ <- function(cropname_mapspam) {
+  
+  ## get protein fraction for spesific crop species
+  faoid_and_prot_frac <-
+    fbs_crops_wide_gaez_filled %>%
+    filter(spamname == cropname_mapspam) %>%
+    dplyr::select(Area.Code, protein_fraction)
+  
+  ## reclassification matrix
+  rcl_mat_countries_to_prot_frac <-
+    matrix(c(
+      faoid_and_prot_frac$Area.Code,
+      faoid_and_prot_frac$protein_fraction),
+      ncol = 2)
+  
+  ## classify. Creates a raster that shows protein fraction for each country
+  
+    # first define values for others
+  fbs_avg_proteinfract_of_a_crop <-
+  fbs_crops_wide_gaez_filled %>%
+  filter(spamname == cropname_mapspam, Area == "World") %>%
+  pull(protein_fraction)
+  
+  r_fraction_prot  <- 
+    cntry_raster %>% #  south sudan?
+    classify(rcl_mat_countries_to_prot_frac, 
+             others = fbs_avg_proteinfract_of_a_crop)
+  
+  
+  # production raster  ----------- gaez data here!!
+  r_production_crop <- 
+    subset(r_GAEZattnyld_for_spamcrops_fresh_relevant_areas,
+           cropname_mapspam) 
+           
+  
+  
+  ## protein production raster
+  r_prot <-
+    r_production_crop * r_fraction_prot
+  names(r_prot) <- paste0(cropname_mapspam, "_prot")
+  
+  return(r_prot)
+}
+
+( gaez_MAIZ_prot <- f_crop_protein_production_kg_ha_GAEZ("MAIZ") )
+( gaez_DRYLANDRICEprot <- f_crop_protein_production_kg_ha_GAEZ("DRYLANDRICE") )
+
+
+
+# Use map() to apply this function to all the crops
+r_attainable_Prot_yield_spamcrops_relevant_areas_kg_ha <-
+  map(combined_data_gaez_spam$spamname, # väärä nimi
+      f_crop_protein_production_kg_ha_GAEZ) |> 
+  rast()
+
+
+# Combine DRYLANDRICE_prot"  "WETLANDRICE_prot" "VEGETOMATOES_prot" "VEGECAPPAGES_prot" "VEGEONION_prot
+r_VEGE_prot <-
+  c(r_attainable_Prot_yield_spamcrops_relevant_areas_kg_ha$VEGETOMATOES_prot,
+    r_attainable_Prot_yield_spamcrops_relevant_areas_kg_ha$VEGECAPPAGES_prot,
+    r_attainable_Prot_yield_spamcrops_relevant_areas_kg_ha$VEGEONION_prot) |> 
+  sum(na.rm=T)
+names(r_VEGE_prot) <- "VEGE_prot"
+
+
+r_RICE_prot <-
+  c(r_attainable_Prot_yield_spamcrops_relevant_areas_kg_ha$DRYLANDRICE_prot,
+    r_attainable_Prot_yield_spamcrops_relevant_areas_kg_ha$WETLANDRICE_prot) |> 
+  sum(na.rm=T)
+names(r_RICE_prot) <- "RICE_prot"
+
+
+
+
+r_attainable_Prot_yield_spamcrops_relevant_areas_kg_ha <- 
+  c(r_attainable_Prot_yield_spamcrops_relevant_areas_kg_ha, r_VEGE_prot, r_RICE_prot) |> 
+  
+  # remove some layers
+  subset(c("DRYLANDRICE_prot", "WETLANDRICE_prot", "VEGETOMATOES_prot", "VEGECAPPAGES_prot", "VEGEONION_prot"), negate = T)
+
+
+
+
+r_attainable_Prot_yield_spamcrops_relevant_areas_kg_ha |> plot() # check the areas, e.g. South Sudan
+
+
+## just a test
+# test_gaez_prot_yields <-
+#   sum(r_attainable_Prot_yield_spamcrops_relevant_areas_kg_ha, na.rm=T)
+# plot(test_gaez_prot_yields)
+# 
+# test_gaez_prot_yields_south_sudan <-
+#   crop_and_mask(test_gaez_prot_yields,
+#        (adm_10m %>% filter(ADMIN == "South Sudan") %>% dplyr::select(ADMIN) |> 
+#   as("Spatial") |>   vect()))
+# 
+# plot(test_gaez_prot_yields_south_sudan, main ="Potential GAEZ yields for Sudan - no cropmix") 
+```
+
+# Perpix
+
+```{r}
+# First GAEZ attn yields perpix (for certain SPAM crops)
+r_gaez_estimate_attn_total_protein_yield_relevant_areas_kg_perpix <-
+  r_attainable_Prot_yield_spamcrops_relevant_areas_kg_ha * # esim vehnää 3000 kg/ha (gl alueilla joilla SI > 1)
+  cellSize(template_rast_5arcmin, unit = "ha") * # solun koko
+  gl_areas_with_no_current_cl_with_SIgte1 # maatalousmaan osuus solussa, esim 20 % (gl alueet joilla SI > 1)
+
+r_gaez_estimate_attn_total_protein_yield_relevant_areas_kg_perpix
+```
+
+
+
+# Protein to kcal using GAEZ perpix yields
+
+```{r}
+# First, change names in crop protein production raster
+r_prot_allcrops_mt_perpix_namechange_gaez <-
+  r_gaez_estimate_attn_total_protein_yield_relevant_areas_kg_perpix/1000 # to MMT
+new_names <- sub("_prot$", "", names(r_prot_allcrops_mt_perpix_namechange_gaez)) # # !! 21 lyr only
+names(r_prot_allcrops_mt_perpix_namechange_gaez) <- new_names
+
+
+
+f_crop_kcal_prod_MM_perpix_gaez <- function(cropname_mapspam) {
+
+  ## get protein fraction for spesific crop species
+  faoid_and_kcalPerKg <-
+    fbs_crops_wide_gaez_filled %>%
+    filter(spamname == cropname_mapspam) %>%
+    dplyr::select(Area.Code, 
+                  one_kg_prot_to_kcal) # this in amount of kcal within 1kg or protein
+
+  ## reclassification matrix
+  rcl_mat_countries_to_one_kg_prot_to_kcal <-
+    matrix(c(faoid_and_kcalPerKg$Area.Code, 
+             faoid_and_kcalPerKg$one_kg_prot_to_kcal),
+           ncol = 2)
+
+  ## classify. Creates a raster with one_kg_prot_to_kcal for spesific crop
+  
+      # first define values for others
+  fbs_avg_one_kg_prot_to_kcal_of_a_crop <-
+  fbs_crops_wide_gaez_filled %>%
+  filter(spamname == cropname_mapspam, Area == "World") %>%
+  pull(one_kg_prot_to_kcal)
+  
+  
+  r_one_kg_prot_to_kcal  <- 
+    cntry_raster %>%
+    classify(rcl_mat_countries_to_one_kg_prot_to_kcal, 
+             others = fbs_avg_one_kg_prot_to_kcal_of_a_crop)
+
+  
+    # protein production raster
+  r_production_crop_protein_mt_perpix <-
+    subset(r_prot_allcrops_mt_perpix_namechange_gaez, # Protein production raster names originally WHEA_prot etc
+           cropname_mapspam) 
+  
+  
+  ## kcal production raster
+  
+  r_kcal_MM_perpix <-
+    # divide as production unit = mt and our desired unit = million
+    (r_production_crop_protein_mt_perpix * 1000)/1e6 * r_one_kg_prot_to_kcal
+  
+  names(r_kcal_MM_perpix) <- paste0(cropname_mapspam, "_MMkcal")
+
+  return(r_kcal_MM_perpix)
+}
+
+# test
+f_crop_kcal_prod_MM_perpix_gaez("WHEA") |> plot()
+
+
+# lapply for all crops
+r_kcal_allcrops_MM_perpix_gaez <- 
+  lapply(new_names, ## 21
+         f_crop_kcal_prod_MM_perpix_gaez) %>%
+  rast()
+
+# We don't take sum here as we need individual layers
+# r_kcal_allcrops_sum_MM_perpix_gaez <- sum(r_kcal_allcrops_MM_perpix_gaez, na.rm = T)
+
+```
+
+
+
+# SPAM crop mix --> takes few hours to run
+--> let's use the crop mix created in script where we evaluated PROTEIN outside cl areas
+
+
+```{r}
+############### get the file
+r_crop_share_of_agland <- 
+  here("Data", "Intermediate_input",
+       "r_SPAMcrops_share_of_agland_adm2_filled_5arcmin.tif") |> 
+  rast()
+names(r_crop_share_of_agland) # share_WHEA etc
+```
+
+
+# Arvioi nyt crop mix soluille jotka ovat cl alueiden ulkopuolella
+
+Eli maskataan relevantille alueelle (alueelle joka nykyisten cl ulkopuolella mutta joka kuuluu nykyisiin gl alueisiin)
+
+```{r}
+# First GAEZ attn yields perpix (for certain SPAM crops)
+  # done above
+
+
+
+  
+# Arvioidaan sato kullekin pix niin että kerrotaan kcal sato sillä osuudella, jota kyseistä kasvia nyt viljellään
+
+r <- r_kcal_allcrops_MM_perpix_gaez
+
+r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_perpix <- sum(
+  c(
+  r$WHEA_MMkcal * r_crop_share_of_agland$share_WHEA,
+  r$RICE_MMkcal * r_crop_share_of_agland$share_RICE,
+  r$BARL_MMkcal * r_crop_share_of_agland$share_BARL,
+  r$MAIZ_MMkcal * r_crop_share_of_agland$share_MAIZ,
+  r$PMIL_MMkcal * r_crop_share_of_agland$share_PMIL,
+  #r$MILL_MMkcal * r_crop_share_of_agland$MILL,
+  r$SORG_MMkcal * r_crop_share_of_agland$share_SORG,
+  # r$OCER_MMkcal * r_crop_share_of_agland$OCER,
+  r$CASS_MMkcal * r_crop_share_of_agland$share_CASS,
+  r$POTA_MMkcal * r_crop_share_of_agland$share_POTA,
+  r$SWPO_MMkcal * r_crop_share_of_agland$share_SWPO,
+  r$YAMS_MMkcal * r_crop_share_of_agland$share_YAMS,
+  #r$ORTS_MMkcal * r_crop_share_of_agland$ORTS,
+  r$BEAN_MMkcal * r_crop_share_of_agland$share_BEAN,
+  r$CHIC_MMkcal * r_crop_share_of_agland$share_CHIC,
+  r$COWP_MMkcal * r_crop_share_of_agland$share_COWP,
+  r$PIGE_MMkcal * r_crop_share_of_agland$share_PIGE,
+  r$OPUL_MMkcal * r_crop_share_of_agland$share_OPUL,
+  # r$LENT_MMkcal * r_crop_share_of_agland$LENT,
+  r$SOYB_MMkcal * r_crop_share_of_agland$share_SOYB,
+  r$GROU_MMkcal * r_crop_share_of_agland$share_GROU,
+  r$CNUT_MMkcal * r_crop_share_of_agland$share_CNUT,
+  r$BANA_MMkcal * r_crop_share_of_agland$share_BANA,
+  #r$PLNT_MMkcal * r_crop_share_of_agland$PLNT,
+  r$TROF_MMkcal * r_crop_share_of_agland$share_TROF,
+  # r$TEMF_MMkcal * r_crop_share_of_agland$TEMF,
+  r$VEGE_MMkcal * r_crop_share_of_agland$share_VEGE),
+  na.rm = TRUE)
+
+r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_perpix
+names(r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_perpix) <-
+  "gaez_kcal_outside_cl"
+
+### global sums
+global(r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_perpix*1e6, "sum", na.rm = T)/1e12 # 2425 trillion kcal (about 23% of existing crop kcal prod)
+
+
+
+
+
+# Convert back to kg per ha (only 1 layer now)
+r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_ha <-
+  r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_perpix /
+  (cellSize(template_rast_5arcmin, unit = "ha") * gl_areas_with_no_current_cl_with_SIgte1)
+
+names(r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_ha) <-
+  "gaez_kcal_outside_cl"
+
+plot(ifel(r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_ha > 0 ,1,NA))
+
+
+# save perpix raster
+writeRaster(r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_perpix,
+            filename= here("Data", "Intermediate_input",
+                           "r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_perpix.tif"),
+            overwrite = T)
+# per ha
+writeRaster(r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_ha,
+            filename= here("Data", "Intermediate_input",
+                           "r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_ha.tif"),
+            overwrite = T)
+
+
+
+####### get the file 
+# use rast() function
+r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_perpix <-
+  here("Data", "Intermediate_input",
+       "r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_perpix.tif") |> 
+  rast()
+
+r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_ha <-
+  here("Data", "Intermediate_input",
+       "r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_ha.tif") |> 
+  rast()
+
+
+## Again crop and mask to south sudan
+test_gaez_kcal_in_south_sudan <-
+  crop_and_mask(r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_ha,
+                (adm_10m %>% filter(ADMIN == "South Sudan") %>% dplyr::select(ADMIN) |>
+  as("Spatial") |>   vect()))
+plot(test_gaez_kcal_in_south_sudan) # these outside current croplands! and there is potential
+```
+
+# GAEZ-based crop kcal yields outside current cl production areas but existing yields on existing production areas
+
+```{r}
+# crops
+  # perpix
+r_crop_kcal_existing_plus_new_areas_MM_perpix <-
+  classify(r_kcal_allcrops_sum_MM_perpix, cbind(NA, 0)) + # from another script
+  classify(r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_perpix, cbind(NA, 0))
+
+r_crop_kcal_existing_plus_new_areas_MM_perpix <-
+  classify(r_crop_kcal_existing_plus_new_areas_MM_perpix, cbind(0, NA))
+
+names(r_crop_kcal_existing_plus_new_areas_MM_perpix) <-
+  "crop_kcal_MM_perpix"
+
+  
+  # per ha
+r_crop_kcal_existing_plus_new_areas_MM_ha <-
+  classify(r_kcal_allcrops_sum_MM_ha, cbind(NA,0)) + # another script
+  classify(r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_ha, cbind(NA,0))
+
+r_crop_kcal_existing_plus_new_areas_MM_ha <-
+  classify(r_crop_kcal_existing_plus_new_areas_MM_ha, cbind(0,NA))
+
+
+
+
+
+# SAVE
+writeRaster(r_crop_kcal_existing_plus_new_areas_MM_perpix,
+            filename= here("Data", "Intermediate_input",
+                           "r_crop_kcal_existing_plus_new_areas_MM_perpix.tif"),
+            overwrite = T)
+
+
+writeRaster(r_crop_kcal_existing_plus_new_areas_MM_ha,
+            filename= here("Data", "Intermediate_input",
+                           "r_crop_kcal_existing_plus_new_areas_MM_ha.tif"),
+            overwrite = T)
+
+
+
+############## get the file
+r_crop_kcal_existing_plus_new_areas_MM_perpix <-
+  here("Data", "Intermediate_input",
+       "r_crop_kcal_existing_plus_new_areas_MM_perpix.tif") |> 
+  rast()
+
+
+r_crop_kcal_existing_plus_new_areas_MM_ha <-
+  here("Data", "Intermediate_input",
+       "r_crop_kcal_existing_plus_new_areas_MM_ha.tif") |> 
+  rast()
+
+
+
+```
+
+
+
+
+
+
+
+# Plot
+
+```{r}
+pal_protein_lajolla <- scico(n = 6, palette = "lajolla", begin = 0.15, end = 1, direction = -1) # previously ended 0.85
+
+
+
+r_separate_existing_and_GAEZ_derived_kcal_yields <-
+  c(r_kcal_allcrops_sum_MM_ha, 
+    r_gaez_estimate_attn_total_kcal_yield_relevant_areas_MM_ha)
+
+names(r_separate_existing_and_GAEZ_derived_kcal_yields) <- c("Existing", "GAEZ-derived")
+plot(r_separate_existing_and_GAEZ_derived_kcal_yields)
+
+
+(plt_crop_kcal_gaez <- 
+    create_index_map(r_index = r_crop_kcal_existing_plus_new_areas_MM_ha, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "kcal: Existing + new areas",
+                     index_label = "[million kcal/ha]",
+                     colorpal = pal_protein_lajolla,
+                     breakvals = c(0, 0.2, 0.5, 1, 10, 50, Inf),
+                     breaknames = c("<0.2","0.2-0.5",
+                                  "0.5-1","1-10", "10-50", ">50"))) 
+
+
+
+(plt_crop_kcal_GAEZ_derived_and_existing <- 
+  create_index_map(r_index = r_separate_existing_and_GAEZ_derived_kcal_yields,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Crop kcal yield existing and GAEZ derived areas", #  
+                   index_label = "[MMkcal/ha]",
+                   colorpal = pal_protein_lajolla,
+                     breakvals = c(0, 0.2, 0.5, 1, 10, 50, Inf),
+                     breaknames = c("<0.2","0.2-0.5",
+                                  "0.5-1","1-10", "10-50", ">50"))) 
+
+
+
+```
+
+

@@ -5,6 +5,8 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
+!!! Lisää tähän myös kcal scripti! 
+
 
 
 
@@ -14,15 +16,22 @@ Calculate protein and kcal fof grazing livestock and crops on existing productio
 # Crops - FAO data processing
 - Select crops, calculate protein fraction and kcalPerKg for each crop and country
 
+# !!!!!!!!!  Nämä vaihdettu kun käytetään SPAM 2020
+- vuosi vaihdettu 2020, myös hieman eri tiedostopolku SPAM tuotteille
+- MILL nimi vaihdettu MILL
+
+
+# !!!!!!!!!  Nämä on vielä vaihdettava
+- SI rainfed vaihdetaan current irrigation applied SI tilalle
 
 ```{r}
 # ---------------------------------------------------------- FAOSTAT download 
   ## no need to update the data if we use only yr 2010?
 foodBalanceSheets_semiraw <-
-  here("Data", "Input", "faostat", "foodBalanceSheets_E_All_Data_NOFLAG.csv") %>% 
-  read.csv() %>% 
-  dplyr::select(-Element.Code,-Unit ,-c(Y2011:Y2019)) 
-
+  here("Data", "Input", "faostat", "foodBalanceSheets_E_All_Data_NOFLAG.csv") %>%
+  read.csv() %>%
+  dplyr::select(-Element.Code,-Unit , -c(Y2010:Y2019), -c(Y2021)) #
+names(foodBalanceSheets_semiraw)
 
 # ---------------------------------------------------------- crops
 my_itemlist_fao <- c(  # in mapspam webpage order
@@ -50,7 +59,7 @@ fbs_crops <- foodBalanceSheets_semiraw  %>%
 
  ## to wide format. Select only relevant variables
 fbs_crops_wide <- fbs_crops %>% 
-  pivot_wider(names_from = Element, values_from = Y2010) %>% 
+  pivot_wider(names_from = Element, values_from = Y2020) %>% # 2020 
   rename(prod_1000mt = "Production",
          supply.KgCapYr = "Food supply quantity (kg/capita/yr)",
          supply.KcalCapD = "Food supply (kcal/capita/day)",
@@ -60,7 +69,7 @@ fbs_crops_wide <- fbs_crops %>%
 
   ## add column where item names corresponds to mapsmap names
   ## see Definitions and standards - Food Balances (2010-) for the classes
-  ## cannot add information for all crops like this -- add SMIL, COWP, PIGE, OPUL, LENT, TROF afterwards
+  ## cannot add information for all crops like this -- add MILL, COWP, PIGE, OPUL, LENT, TROF afterwards
 fbs_crops_wide <- fbs_crops_wide %>% 
   mutate(spamname = case_when(
     Item == "Wheat and products" ~ "WHEA",
@@ -68,7 +77,7 @@ fbs_crops_wide <- fbs_crops_wide %>%
     Item == "Barley and products" ~ "BARL",
     Item == "Maize and products" ~ "MAIZ",
     Item == "Millet and products"  ~ "PMIL", 
-#    Item == "Millet and products"  ~ "SMIL", # ei toimi koska 2x Millet and products
+#    Item == "Millet and products"  ~ "MILL", # ei toimi koska 2x Millet and products
     Item == "Sorghum and products"  ~ "SORG",
     Item == "Cereals, Other"   ~ "OCER",
     Item == "Potatoes and products" ~ "POTA",
@@ -95,7 +104,7 @@ fbs_crops_wide <- fbs_crops_wide %>%
 
  # could be done with function but was faster like this..
 additional_rows <- list(
-  fbs_crops_wide %>% filter(Item == "Millet and products") %>% mutate(spamname = "SMIL"),
+  fbs_crops_wide %>% filter(Item == "Millet and products") %>% mutate(spamname = "MILL"),
   fbs_crops_wide %>% filter(Item == "Pulses, Other and products") %>% mutate(spamname = "COWP"),
   fbs_crops_wide %>% filter(Item == "Pulses, Other and products") %>% mutate(spamname = "PIGE"),
   fbs_crops_wide %>% filter(Item == "Pulses, Other and products") %>% mutate(spamname = "OPUL"),
@@ -112,7 +121,7 @@ fbs_crops_wide <- fbs_crops_wide %>% bind_rows(additional_rows)
     
 mylist_spamnames <- c(
   "WHEA", "RICE", "BARL", "MAIZ", "PMIL",
-  "SMIL","SORG",  "OCER", "CASS", "POTA",
+  "MILL","SORG",  "OCER", "CASS", "POTA",
   "SWPO", "YAMS", "ORTS", "BEAN", "CHIC",
   "COWP", "PIGE", "OPUL", "LENT", "SOYB",
   "GROU", "CNUT", "BANA", "PLNT", "TROF", 
@@ -126,6 +135,7 @@ mylist_spamnames <- c(
 fbs_crops_wide <- fbs_crops_wide %>% 
   mutate(protein_fraction = (prot.gCapD * 365 / 1000) / supply.KgCapYr,
          kcalPerKg = (supply.KcalCapD * 365)/ supply.KgCapYr)  %>% 
+  mutate(one_kg_prot_to_kcal =  (supply.KcalCapD / prot.gCapD) * 1000) |> 
   
   ## remove cases where supply = 0 (cases that yield NA values)  
   ## # also converts NaN to NA
@@ -199,19 +209,19 @@ fbs_crops_wide_filled <- bind_rows(fbs_crops_wide_filled_list)
 #fbs_crops_wide_filled$spamname %>% unique()
 
 
-
+# Edit: maybe not needed as in 2020 these are separated in FAOSTAT
 # Add Sudan rows to South Sudan (give new FAO id etc to South Sudan but use other values from Sudan)
-sudan <- fbs_crops_wide_filled %>% 
-  filter(Area == "Sudan") %>% 
-  dplyr::select(-Area.Code, -Area)
-
-south_sudan <- sudan %>% 
-  mutate(Area.Code = 277,
-         Area = "South Sudan")
-
-# Combine to the fbs_crops_wide_filled
-fbs_crops_wide_filled <- 
-  rbind(fbs_crops_wide_filled, south_sudan)
+# sudan <- fbs_crops_wide_filled %>% 
+#   filter(Area == "Sudan") %>% 
+#   dplyr::select(-Area.Code, -Area)
+# 
+# south_sudan <- sudan %>% 
+#   mutate(Area.Code = 277,
+#          Area = "South Sudan")
+# 
+# # Combine to the fbs_crops_wide_filled
+# fbs_crops_wide_filled <- 
+#   rbind(fbs_crops_wide_filled, south_sudan)
 ```
 
 
@@ -226,12 +236,20 @@ fbs_crops_wide_filled <-
 #---------------------------------- get physical areas for spam crops 
   ## (in ha originally)
 f_physical_area_crops_ha_perpix <- function(cropname_mapspam) {
-  list.files(path = here("Data", "Input", "mapspam", "physical_area") ,
+  list.files(path = here("Data", "Input", "mapspam", "SPAM2020", "physical_area") ,
            pattern = paste0("_", cropname_mapspam, "_A"), 
            full.names = TRUE)  %>%  
   rast()
 }
 f_physical_area_crops_ha_perpix("WHEA") 
+
+# f_physical_area_crops_ha_perpix <- function(cropname_mapspam) {
+#   list.files(path = here("Data", "Input", "mapspam", "physical_area") ,
+#            pattern = paste0("_", cropname_mapspam, "_A"), 
+#            full.names = TRUE)  %>%  ############################# 2010
+#   rast()
+# }
+
 
   ## get physical areas for all of the spam crops
 r_physical_areas_ha_perpix <- 
@@ -243,11 +261,12 @@ names(r_physical_areas_ha_perpix) <- mylist_spamnames
 #plot(r_physical_areas_ha_perpix$WHEA) 
 
 
-
   ## sum of these areas, read as "area of crop species in cell combined in km2"
 r_physical_areas_crops_sum_ha_perpix <- sum(r_physical_areas_ha_perpix, na.rm = T) # areas per grid cell. e.g in India lot of area covered by some crops
 plot(r_physical_areas_crops_sum_ha_perpix, main = "physical areas (_A_) of SPAM food crops, ha per pix)")
-global(r_physical_areas_crops_sum_ha_perpix, fun = "sum", na.rm = T)/1e6 # 9.75 milj km2 total --> higher than Total global cropland area estimate of
+global(r_physical_areas_crops_sum_ha_perpix, fun = "sum", na.rm = T)/1e6 # 1043 million ha in 2020
+
+# (in 2010 was  9.75 milj km2 total --> higher than Total global cropland area estimate of)
 # https://www.statista.com/statistics/201774/projection-for-total-global-cropland-area-from-2010/
 # , which estimates it was 859 million ha in 2010 ( = 8.6 milj km2) --> do not include fruits etc
 
@@ -257,7 +276,7 @@ global(r_physical_areas_crops_sum_ha_perpix, fun = "sum", na.rm = T)/1e6 # 9.75 
 # fraction of crops in 5arcmin cell
 r_fraction_cl <-
   r_physical_areas_crops_sum_ha_perpix / 
-  cellSize(r_physical_areas_crops_sum_ha_perpix, unit = "ha")
+  cellSize(r_physical_areas_crops_sum_ha_perpix, unit = "ha") 
 names(r_fraction_cl) <- "fraction_crops"
 
 
@@ -266,7 +285,8 @@ r_fraction_cl_0toNA <- classify(r_fraction_cl, cbind(0,NA))
 r_fraction_cl_NAto0 <- classify(r_fraction_cl, cbind(NA,0))
 
 # plot. e.g in India a large share of land area is cultivated for crops 
-plot(r_fraction_cl, main = "fraction of 27 crops in 5arcmin cells") ##!!  proper plot in supplementary --> edit with 27
+plot(r_fraction_cl, main = "fraction of 27 crops in 5arcmin cells") ##!!  proper plot in supplementary 
+
 
 
 ```
@@ -286,13 +306,20 @@ plot(r_fraction_cl, main = "fraction of 27 crops in 5arcmin cells") ##!!  proper
 ```{r}
   ## get the pdoruction data for all food crops with function
 f_global_prod_crops_mt <- function(cropname_mapspam) {
-  list.files(path = here("Data", "Input", "mapspam", "global_prod") ,
+  list.files(path = here("Data", "Input", "mapspam", "SPAM2020", "global_prod") ,
              pattern = paste0("P_", cropname_mapspam, "_A"),
              full.names = TRUE)  %>%
     rast()
 }
 
 f_global_prod_crops_mt("WHEA") # returns raster, unit = mt per pixel (tons per pix)
+
+# f_global_prod_crops_mt <- function(cropname_mapspam) {
+#   list.files(path = here("Data", "Input", "mapspam", "global_prod") ,
+#              pattern = paste0("P_", cropname_mapspam, "_A"),
+#              full.names = TRUE)  %>%
+#     rast()
+# }
 
 
   ## 27 global production rasters in same stack 
@@ -351,7 +378,7 @@ f_crop_protein_production_mt_perpix <- function(cropname_mapspam) {
   
   ## protein production raster
   r_prot <-
-    r_production_crop* r_fraction_prot
+    r_production_crop * r_fraction_prot
   names(r_prot) <- paste0(cropname_mapspam, "_prot")
   
   return(r_prot)
@@ -410,7 +437,7 @@ tot_sums_cropspecies <- tot_sums_cropspecies %>%
   mutate(across(where(is.numeric), round)) # !! large differences in soyabeans!
 
 
-# total sums -- production 4700 milliom tons, protein 400 Mt, energy 11 000 MM kcal 
+# total sums -- in 2010  production 4700 milliom tons, protein 400 Mt, energy 11 000 MM kcal 
 tot_sums_cropspecies %>% 
   group_by() %>% 
   summarise(sum_production_Mt = sum(prod_Mt),
@@ -419,6 +446,11 @@ tot_sums_cropspecies %>%
             sum_protein_Mt_FAO = sum(prot_Mt_FAO)) #,
    #         sum_kcal_MM = sum(kcal_MM),
     #        sum_kcal_MM_FAO = sum(kcal_MM_FAO)) 
+
+
+
+
+
 ```
 
 
@@ -448,14 +480,15 @@ summary(r_prot_allcrops_sum_kg_ha) # median = 198 kg of protein
 
 # ------------------------------------------------------------------ global sums
   ## total crop prodution areas
-global(r_physical_areas_crops_sum_ha_perpix, fun = "sum", na.rm = T)/1e6 # 975 million ha = 0.975 billion ha
+global(r_physical_areas_crops_sum_ha_perpix, fun = "sum", na.rm = T)/1e6 # 1042 mha
   ## total production
-global(r_global_production_crops_sum_mt, fun = "sum", na.rm = T)/1e6 # 5374 mmt
+global(r_global_production_crops_sum_mt, fun = "sum", na.rm = T)/1e6 # 6015	mmt
   ## total protein production
 (global_protein_sum_mmt <-
-  global(r_prot_allcrops_sum_mt_perpix, fun = "sum", na.rm = T)/1e6) # 274 mmt 
-
-
+  global(r_prot_allcrops_sum_mt_perpix, fun = "sum", na.rm = T)/1e6) # 375 mmt
+#in 2010 975 million ha = 0.975 billion ha
+# in 2010 total production 5374 mmt
+# in 2010 total protein production 274 mmt 
 
 # to check
 # sum(tot_sums_cropspecies$protein_Mt) # 267 
@@ -467,30 +500,56 @@ global(r_global_production_crops_sum_mt, fun = "sum", na.rm = T)/1e6 # 5374 mmt
 ###-------------------------------------------- Calculate g protein per day per capita
   # based on FAOSTAT population in 2010 was 6869581.88 * 1000 persons
 (1e12 * global_protein_sum_mmt) / # grams (mmt = 1e9 kg)
-  (1000* foodBalanceSheets_semiraw %>% filter(Area == "World", Item == "Population") %>% pull(Y2010)) / # persons
+  (1000* foodBalanceSheets_semiraw %>% filter(Area == "World", Item == "Population") %>% pull(Y2020)) / # persons
   365  # days in a year
-# 109 g/cap/d
+# 132 g/cap/yr, was in 2010 109 g/cap/d
 
     # this compared to reported protein need
 ((1e12 * global_protein_sum_mmt) / # grams (mmt = 1e9 kg)
-  (1000* foodBalanceSheets_semiraw %>% filter(Area == "World", Item == "Population") %>% pull(Y2010)) / # persons
+  (1000* foodBalanceSheets_semiraw %>% filter(Area == "World", Item == "Population") %>% pull(Y2020)) / # persons
   365 ) /# days in a year
   (0.8*70) # protein need
-# ---> 1.95 x the current protein need
+# ---> in 2020 2.36 x current protein need, in 2010 was 1.95 x the current protein need
+
+    # for who many persons this would be enough?
+    # in 2020 a people would need 56g * 365d = 20440 g = 20.4kg protein in a year. Our esimate would be enough for 
+(1e12 * global_protein_sum_mmt) / # total protein in grams - 1 mmt = 1e9 kg = 1e12 g
+    (0.8*70*365) / # 20440 grams needed in a year
+  1e6 
 
 
 
-  # combined protein from crops and livestock = 284.8782 mmt. This is 
-(1e12 * 284.4129) /
-   (1000* foodBalanceSheets_semiraw %>% filter(Area == "World", Item == "Population") %>% pull(Y2010)) / # persons
+
+
+
+  # combined protein from crops and livestock = 385.1329 mmt. This is 
+(1e12 * 385.1329) /
+   (1000* foodBalanceSheets_semiraw %>% filter(Area == "World", Item == "Population") %>% pull(Y2020)) / # persons
   365 
-# 113 g/capita/day
+# 135 g/capita/day
+
+
+(1e12 * 385.1329)  / # total protein in grams
+    (0.8*70*365) / # 20440 grams needed in a year
+  1e6 
+
+
+
+plot(r_physical_areas_crops_sum_ha_perpix, main = "physical areas (_A_) of SPAM food crops, ha per pix)")
+
+plot(r_fraction_cl, main = "fraction of 27 crops in 5arcmin cells")
+
+
 ```
 
 
 # Write rasters for intermediate use
 
 ```{r}
+writeRaster(r_physical_areas_ha_perpix,
+            here("Data", "Intermediate_input","r_physical_areas_ha_perpix.tif"),
+            overwrite = T)
+
 
 writeRaster(r_physical_areas_crops_sum_ha_perpix,
             here("Data", "Intermediate_input","r_physical_areas_crops_sum_ha_perpix.tif"),
@@ -527,9 +586,12 @@ writeRaster(r_prot_allcrops_sum_kg_ha,
 
 ```{r}
 # Get SI data
-SI_5arcmin <- 
-  here("Data", "Input", "Zabel22_SI",
-       "SI_5arcmin_overall_suitability_subset1to17_hist1980_2009_current_irr_areas_applied.tif") %>% 
+
+SI_5arcmin <- #
+  here("Data", "Input", "from_harddrive",
+       "SI_5arcmin_overall_suitability_subset1to17_2010-2039_rcp8p5_rainfed.tif") %>%
+  # here("Data", "Input", "Zabel22_SI",
+  #      "SI_5arcmin_overall_suitability_subset1to17_hist1980_2009_current_irr_areas_applied.tif") %>%
   rast()
 
 # create masks: marginally, moderately, highly
@@ -560,13 +622,14 @@ global_sum_maskedtohigh <-
 
 
 # compare this to the total protein output that we get from all croplands
-100 * global_sum_maskedtomarginal/global_protein_sum_mmt # 14%
-100 * global_sum_maskedtomoderate/global_protein_sum_mmt # 66%
-100 * global_sum_maskedtohigh/global_protein_sum_mmt # 15%
+100 * global_sum_maskedtomarginal/global_protein_sum_mmt # 14 in 2020, was 14% in 2010
+100 * global_sum_maskedtomoderate/global_protein_sum_mmt # 67 in 2020, was 66% in 2010
+100 * global_sum_maskedtohigh/global_protein_sum_mmt # 16 in 2020, was 15% in 2010
 
 global_sum_maskedtomarginal +
   global_sum_maskedtomoderate + global_sum_maskedtohigh
   
+
 ```
 
 

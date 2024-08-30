@@ -1,0 +1,1461 @@
+
+# All to CL ja All to Gl sadot
+
+Huom, tässä tutkimuksessa "uusi" viljasato perpix niillä alueilla joilla on jo viljaa =
+--> olemassaolevilla cl alueilla "uusi" sato olisi kaikki maatalousmaa * viljasato per ha
+--> cl alueiden ulkopuolella uusi viljasato olisi maatalousmaa * GAEZ viljasato per ha
+! Tämä on parempi tapa kuin käyttää GAEZ satoja myös olemassa olevilla cl alueilla
+
+
+
+```{r}
+# Existing protein production
+r_protein_combined_kg_perpix
+pal_LUR_change_percent <-c("darkred", "yellow", "darkblue")
+pal_categories <- c("#A6CEE3", "#C0A2C7", "#1F78B4", "#B2DF8A", "#FFA500")
+
+# SI >= 33
+SI_5arcmin
+SI_gte_33 <- ifel(SI_5arcmin >= 33, 1, NA)
+
+# Values when shift "no potential", "moderate potential", "high potential" and "very high potential"
+no_pot <- 2 # 100% increase
+med_pot <- 5 # 500% increase
+high_pot <- 10 # very high is above this one
+
+
+
+# per ha sadot nykyisillä ja uusilla alueilla
+r_agb_prot_existing_plus_new_areas_kg_ha
+r_crop_prot_existing_plus_new_areas_kg_ha
+
+# Huom! --> tää ei oikea koska ei salli uutta grazing landia!
+# global(r_optimized_grazing_protein_kg_perpix_positive$prot_kgpix_SI99, "sum", na.rm = T)/1e9 # 9.7 --> ei oikea koska proskua ei voi tulla tässä lisää
+
+
+# -------------------------------------------------------------------- All to GL
+  # satopotentiaali per ha tiedetään. Oletetaan nyt, että kaikella maatalousmaalla voidaan tuottaa AGB perusteista protskua
+  # --> uusi sato = maatalousmaa * AGB protskua per ha
+  # --> vanhoilla gl alueilla uusi sato lisääntyy samassa suhteessa kuin agrland määrä. Uusilla arvioitu GAEZ perusteella
+r_agb_prot_when_alltoGL_kg_perpix <-
+  r_agb_prot_existing_plus_new_areas_kg_ha *
+  cellSize(r_agb_prot_existing_plus_new_areas_kg_ha, unit = "ha") *
+  r_fraction_gl_cl_total_0toNA
+
+ifel(r_agb_prot_when_alltoGL_kg_perpix > 0, 1, NA) |> plot()
+
+global(r_agb_prot_when_alltoGL_kg_perpix, "sum", na.rm=T)/1e9 # 13.32 mmt protein (37% larger than existing)
+
+
+# -------------------------------------------------------------------- All to CL
+r_crop_prot_when_alltoCL_kg_perpix <-
+  r_crop_prot_existing_plus_new_areas_kg_ha *
+  cellSize(r_crop_prot_existing_plus_new_areas_kg_ha, unit = "ha") *
+  r_fraction_gl_cl_total_0toNA
+
+ifel(r_crop_prot_when_alltoCL_kg_perpix > 0, 1, NA) |> plot()
+global(r_crop_prot_when_alltoCL_kg_perpix, "sum", na.rm=T)/1e9 # 923.93 mmt protein 
+# ! Note that only 70 MMT comes outside existing cl areas!!
+
+
+
+
+
+
+
+
+################################################################## KCAL
+  # All to GL
+r_agb_kcal_when_alltoGL_MM_perpix <-
+  r_kcal_from_AGB_MM_perha_gaez_mean_existing_plus_newareas *
+  cellSize(template_rast_5arcmin, unit = "ha") *
+  r_fraction_gl_cl_total_0toNA
+
+global(r_agb_kcal_when_alltoGL_MM_perpix*1e6, "sum", na.rm=T)/1e12 # 148.7 trillion kcal (36% larger than existing, which is 109)
+
+
+  # All to CL
+r_crop_kcal_when_alltoCL_MM_perpix <-
+  r_crop_kcal_existing_plus_new_areas_MM_ha *
+  cellSize(r_crop_kcal_existing_plus_new_areas_MM_ha, unit = "ha") *
+  r_fraction_gl_cl_total_0toNA
+
+global(r_crop_kcal_when_alltoCL_MM_perpix*1e6, "sum", na.rm=T)/1e12 # 19310 trillion kcal
+  
+```
+
+All to CL vs Nykyinen tuotanto
+
+- protein and kcal
+
+```{r}
+# Protein
+protein_change_AlltoCL <-
+  classify(r_crop_prot_when_alltoCL_kg_perpix, cbind(NA,0)) /
+  r_protein_combined_kg_perpix
+
+# KCAL
+kcal_change_AlltoCL <-
+  classify(r_crop_kcal_when_alltoCL_MM_perpix, cbind(NA,0))/ 
+  r_energy_combined_MM_perpix
+
+
+# Plot
+# protein
+create_index_map(r_index = protein_change_AlltoCL, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Protein change in %", 
+                     index_label = "[%]",
+                     colorpal = pal_LUR_change_percent,
+                     colorNA = "NA",
+                     breakvals = c(-Inf, no_pot, med_pot, high_pot, Inf),
+                     breaknames = c())
+
+# energy
+create_index_map(r_index = kcal_change_AlltoCL, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Energy change in %", 
+                     index_label = "[%]",
+                     colorpal = pal_LUR_change_percent,
+                     colorNA = "NA",
+                     breakvals = c(-Inf, no_pot, med_pot, high_pot, Inf),
+                     breaknames = c())
+
+
+```
+
+All to GL vs Nykyinen tuotanto
+
+```{r}
+# protein
+protein_change_AlltoGL <- 
+  classify(r_agb_prot_when_alltoGL_kg_perpix, cbind(NA,0))  /
+  r_protein_combined_kg_perpix
+
+summary(protein_change_AlltoGL)
+
+# energy
+kcal_change_AlltoGL <-
+  classify(r_agb_kcal_when_alltoGL_MM_perpix, cbind(NA,0)) / 
+  r_energy_combined_MM_perpix
+
+
+# Plot
+# protein
+create_index_map(r_index = protein_change_AlltoGL, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Protein change in %", 
+                     index_label = "[%]",
+                     colorpal = pal_LUR_change_percent,
+                     colorNA = "NA",
+                     breakvals = c(-Inf, no_pot, med_pot, high_pot, Inf),
+                     breaknames = c())
+
+# energy
+create_index_map(r_index = kcal_change_AlltoGL, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Energy change in %", 
+                     index_label = "[%]",
+                     colorpal = pal_LUR_change_percent,
+                     colorNA = "NA",
+                     breakvals = c(-Inf, no_pot, med_pot, high_pot, Inf),
+                     breaknames = c())
+
+
+# TEST -- how much the protein production changes in AlltoGL scenario
+create_index_map(r_index = protein_change_AlltoGL, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Protein change in % in AlltoGL TEST", 
+                     index_label = "[%]",
+                     colorpal = pal_LUR_change_percent,
+                     colorNA = "NA",
+                     breakvals = c(-Inf,1, 1.01, 1.3, Inf),
+                     breaknames = c())
+
+```
+
+# Which protein & energy raster gets larger values?
+
+```{r}
+r_comparison_protein <-
+  ifel(
+    classify(r_crop_prot_when_alltoCL_kg_perpix, cbind(NA,0)) > 
+         classify(r_agb_prot_when_alltoGL_kg_perpix, cbind(NA,0)), # if CL > GL,
+       r_crop_prot_when_alltoCL_kg_perpix, # use CL,
+       r_agb_prot_when_alltoGL_kg_perpix) # Otherwise GL
+
+global(r_comparison_protein, "sum", na.rm=T)/1e9 # 926 mmt protein --> the largest amount!
+
+## Find areas where GL produces more protein than CL
+r_GL_larger <-
+  ifel(classify(r_agb_prot_when_alltoGL_kg_perpix, cbind(NA,0)) > 
+         classify(r_crop_prot_when_alltoCL_kg_perpix, cbind(NA,0)), # if GL > CL,
+       1, # ,gets value
+       NA) # Otherwise no value
+plot(r_GL_larger, main = "GL mostly larger where SI<1. Some pixels also elsewhere")
+
+
+
+############### KCAL
+r_comparison_energy <-
+  ifel(
+    classify(r_crop_kcal_when_alltoCL_MM_perpix, cbind(NA,0)) > 
+         classify(r_agb_kcal_when_alltoGL_MM_perpix, cbind(NA,0)), # if CL > GL,
+       r_crop_kcal_when_alltoCL_MM_perpix, # use CL,
+       r_agb_kcal_when_alltoGL_MM_perpix) # Otherwise GL
+
+global(r_comparison_energy*1e6, "sum", na.rm=T)/1e12 # 19338 trillion kcal --> the largest amount!
+
+```
+
+
+
+# Recode All to CL
+
+shift only occurs when both protein and kcal production increases
+! kcal production must increase --> not relevant how much
+
+If the combined new yield increases (compared to original yield)
+-100-200% --> "no potential" --> code as -555 (dec on remains about the same)
+200-400% --> "moderate potential" --> code as 1
+400-800% --> "high potential" --> code as 777
+800-Inf% --> "very high potential" --> code as 10000
+
+
+
+```{r}
+# All to CL
+protein_change_AlltoCL
+kcal_change_AlltoCL
+# possibility to change the classes
+ifel(protein_change_AlltoCL > 10, 10, protein_change_AlltoCL) |> hist()
+
+# Recode
+rcl_AlltoCL_protein_recoding <-
+  c(-Inf, no_pot, -555, # no
+    no_pot, med_pot, 1, # mod
+    med_pot, high_pot, 777, # high
+    high_pot, Inf, 10000) %>% # very high
+  matrix(., ncol=3, byrow = T)
+
+protein_change_AlltoCL_recoded <-
+  classify(protein_change_AlltoCL, 
+           rcl_AlltoCL_protein_recoding, 
+           right = FALSE, 
+           # FALSE: 2 is not included in the first class [-Inf, 2[
+           include.lowest = TRUE) 
+           # TRUE: 2 is included in the sec class [2, 5[
+
+# For kcal it is enough if production increases at all (more 1.0*present yield)
+rcl_AlltoCL_kcal_recoding <-
+  c(-Inf, 1, -555, # not increasing
+    1, Inf, 10000) %>% # increasing
+  matrix(., ncol=3, byrow = T)
+
+kcal_change_AlltoCL_recoded <-
+  classify(kcal_change_AlltoCL, 
+           rcl_AlltoCL_kcal_recoding, 
+           right = FALSE, 
+           include.lowest = TRUE)
+
+protein_change_AlltoCL_recoded |> values() |> hist(breaks = 30)
+kcal_change_AlltoCL_recoded |> values() |> hist(breaks = 30)
+
+plot(protein_change_AlltoCL_recoded, col = pal_categories )
+plot(kcal_change_AlltoCL_recoded, col = pal_categories)
+
+
+# ---------------------------------------------------------------- Combine recoded rasters to see where both protein and kcal increases
+protein_and_kcal_AlltoCL_recoded <-
+  protein_change_AlltoCL_recoded +
+  kcal_change_AlltoCL_recoded # maybe classify not necessary
+
+
+# ifel(protein_and_kcal_AlltoCL_recoded != 0, 
+#      NA, 
+#      protein_and_kcal_AlltoCL_recoded) |> plot() # what are these? Some AlltoCL areas where there was no values? --> occur when used classify
+
+protein_and_kcal_AlltoCL_recoded |> plot()
+protein_and_kcal_AlltoCL_recoded |>  unique()
+              # -1110
+              #  -554
+              #   222
+              #  9445
+              # 10001
+              # 10777
+              # 20000
+
+
+rcl_recode_protein_and_kcal <- matrix(c(
+  -1110, -555, # -555 + (-555) --> no pot  & no inc = no potential
+    -554, -555, # -555 + 1 --> no inc & mod pot = no potential
+  222, -555, # 777 + (-555) --> high pot & no inc = no potential
+  9445, -555, # 10000 + (-555) --> very high pot & no inc = no potential
+  10001, 1, # 10000 + 1 --> inc & mod pot = mod pot
+  10777, 777, # 10000 + 777 --> inc & high pot = high pot
+  20000, 10000), # 10000 + 10000 --> inc & very high pot = very high pot
+  ncol = 2, byrow = TRUE)
+
+rcl_recode_protein_and_kcal
+
+protein_and_kcal_AlltoCL_recoded_fixed <-
+  classify(protein_and_kcal_AlltoCL_recoded, 
+           rcl_recode_protein_and_kcal)
+
+unique(protein_and_kcal_AlltoCL_recoded_fixed) # ok!
+
+# plot 
+plot(protein_and_kcal_AlltoCL_recoded_fixed,
+     col = pal_categories) # GOOD!
+
+
+
+```
+
+
+# Recode All to GL
+
+Käytä alkulukuja, jotta saadaan yksiselitteiset luokat!
+
+```{r}
+rcl_AlltoGL_recoding <-
+  matrix(
+  c(-Inf, no_pot, 5, # no pot
+    no_pot, med_pot, 7, # mod
+    med_pot, high_pot, 11, # high
+    high_pot, Inf, 13), # very high 
+  ncol=3, byrow = T)
+
+ifel(protein_change_AlltoGL > no_pot, 100, protein_change_AlltoGL) |> hist()
+# Interpretation:
+# AlltoGL ei tuota merkittävästi lisää protskua juuri missään. Miksi?
+# V: koska nykyinen grazing potential on jo laskettu AGB perusteella, eikä AGB sato pikselissä useinkaan kaksinkertaistu vaikka kaikki viljapellot muunnettaisiin laidunmaaksi.
+
+protein_change_AlltoGL_recoded <-
+  classify(protein_change_AlltoGL, 
+           rcl_AlltoGL_recoding, 
+           right = FALSE, 
+           include.lowest = TRUE)
+
+
+kcal_change_AlltoGL_recoded <-
+  classify(kcal_change_AlltoGL, 
+           rcl_AlltoCL_kcal_recoding, # same with CL
+           right = FALSE, 
+           include.lowest = TRUE)
+
+# Combine
+protein_and_kcal_AlltoGL_recoded <-
+  protein_change_AlltoGL_recoded +
+  kcal_change_AlltoGL_recoded
+
+
+protein_and_kcal_AlltoGL_recoded |> plot(col = pal_categories)
+protein_and_kcal_AlltoGL_recoded |> unique()
+
+
+# recode again - use different rcl than for crops
+# choose worst option here:
+rcl_recode_protein_and_kcal_GL <- matrix(c(
+  -550, 5, # -555 + 5 --> no inc  & no pot = no pot
+  -548, 5, # -555 + 7 --> no inc & mod pot = no pot
+  -544, 5, # -555 + 11 --> no inc & high pot = no pot
+  10005, 5, # 10000 + 5 --> inc & no pot = no pot
+  10007, 7, # 10000 + 7 --> inc & mod pot = mod pot
+  10011, 11, # 10000 + 11 --> inc & high pot = high pot
+  10013, 13), # 10000 + 13 --> inc & very high pot = very high pot
+  ncol = 2, byrow = TRUE)
+
+
+# classify
+protein_and_kcal_AlltoGL_recoded_fixed <-
+  classify(protein_and_kcal_AlltoGL_recoded, 
+           rcl_recode_protein_and_kcal_GL)
+
+unique(protein_and_kcal_AlltoGL_recoded_fixed) # ok!
+
+
+# plot 
+hist(protein_and_kcal_AlltoGL_recoded_fixed,
+     breaks = 30, maxcell = 1e7,
+     main = "Mostly no pot")
+
+plot(protein_and_kcal_AlltoGL_recoded_fixed,
+     col = pal_categories, main = "mostly no pot") # GOOD!
+
+# plot where value is 13 (otherwise NA)
+ifel(protein_and_kcal_AlltoGL_recoded_fixed == 13,
+     protein_and_kcal_AlltoGL_recoded_fixed, NA) |> plot()
+ifel(protein_and_kcal_AlltoGL_recoded_fixed == 13,
+     protein_and_kcal_AlltoGL_recoded_fixed, NA) |>  
+  global("sum", na.rm=T) # 2392 pixels
+
+
+```
+
+# Include other nutrients
+
+From : "supplementary_plot_nutrients.Rmd"
+- use them as a mask: 
+only include the pixels where protein & kcal increase AND at least 21/27 other nutrients' yields remains the same or increases 
+
+```{r}
+plot(r_nutrient_yield_change_between_existing_to_AlltoGL_recoded_sum_gte21)
+plot(r_nutrient_yield_change_between_existing_to_AlltoCL_recoded_sum_gte21)
+
+# All to CL
+protein_and_kcal_AlltoCL_recoded_fixed_21nutrients_not_decreasing <-
+  mask(protein_and_kcal_AlltoCL_recoded_fixed, 
+       r_nutrient_yield_change_between_existing_to_AlltoCL_recoded_sum_gte21)
+
+# All to GL
+protein_and_kcal_AlltoGL_recoded_fixed_21nutrients_not_decreasing <-
+  mask(protein_and_kcal_AlltoGL_recoded_fixed, 
+       r_nutrient_yield_change_between_existing_to_AlltoGL_recoded_sum_gte21)
+
+# plot
+plot(protein_and_kcal_AlltoCL_recoded_fixed_21nutrients_not_decreasing,
+     col = pal_categories, main = "Prot and kcal and 21/27 - AlltoCL")
+
+plot(protein_and_kcal_AlltoGL_recoded_fixed_21nutrients_not_decreasing,
+     col = pal_categories, main = "Prot and kcal and 21/27 - AlltoGL")
+
+
+
+```
+
+# Better plots
+
+Huom: kun tuodaan ravintoaineet mukaan, silloin monet "decreasing" alueet tippuvat pois. Ennen 21/27 huomioimista on dec alueita.
+
+```{r}
+pal_categories <- 
+  c("#A6CEE3", "#C0A2C7", "#B2DF8A", "#FFA500")#
+
+
+breaknames_updated <- c("No potential", 
+                        "Moderate potential", 
+                        "High potential", 
+                        "Very high potential") 
+
+# Without nutrients
+hist(protein_and_kcal_AlltoCL_recoded_fixed,
+     breaks = 30, maxcell = 1e7,
+     main = "In AlltoCL there're many 'no potential' regions ")
+
+hist(protein_and_kcal_AlltoGL_recoded_fixed,
+     breaks = 30, maxcell = 1e7,
+     main = "In AlltoGL there're many 'no potential' regions ")
+
+(plt_protein_and_kcal_AlltoCL_recoded_fixed <-
+  create_index_map(r_index = protein_and_kcal_AlltoCL_recoded_fixed,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Existing vs 'All to CL' - no nutr considered",
+                   index_label = "",
+                   colorpal = pal_categories,
+                   breakvals = c(-Inf, -554, 2, 778, Inf),
+                   breaknames = breaknames_updated))
+
+
+(plt_protein_and_kcal_AlltoGL_recoded_fixed <-
+  create_index_map(r_index = protein_and_kcal_AlltoGL_recoded_fixed,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Existing vs 'All to GL' - no nutr considered",
+                   index_label = "",
+                   colorpal = pal_categories,
+                   breakvals = c(-Inf, 6, 8, 12, Inf),
+                   breaknames = breaknames_updated))
+
+
+
+
+
+
+
+# Nutrients not decreasing considered
+hist(protein_and_kcal_AlltoCL_recoded_fixed_21nutrients_not_decreasing,
+     breaks = 30, maxcell = 1e7,
+     main = "In AlltoCL there're many 'no potential' regions ")
+
+hist(protein_and_kcal_AlltoGL_recoded_fixed_21nutrients_not_decreasing,
+     breaks = 30, maxcell = 1e7,
+     main = "In AlltoGL there're many 'no potential' regions ")
+
+
+
+# All to CL
+(plt_AlltoCL_plus21nutrients_not_decreasing <-
+  create_index_map(r_index = protein_and_kcal_AlltoCL_recoded_fixed_21nutrients_not_decreasing,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Existing vs 'All to CL' - 21/27 nutr not decr",
+                   index_label = "",
+                   colorpal = pal_categories,
+                    breakvals = c(-Inf, -554, 2, 778, Inf),
+                   breaknames = breaknames_updated))
+
+# All to GL
+(plt_AlltoGL_plus21nutrients_not_decreasing <-
+  create_index_map(r_index = protein_and_kcal_AlltoGL_recoded_fixed_21nutrients_not_decreasing,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Existing vs 'All to GL' - 21/27 nutr not decr",
+                   index_label = "",
+                   colorpal = pal_categories,
+                   breakvals = c(-Inf, 6, 8, 12, Inf),
+                   breaknames = breaknames_updated))
+
+
+```
+
+
+
+# Combine 'All to CL' and 'All to GL' maps
+
+If AlltoCL = no potential AND AlltoGL = no potential --> ei muuteta mitään
+If AlltoCL = no potential AND AlltoGL = increase --> AlltoGL?
+If AlltoCL = increase AND AlltoGL = no potential --> AlltoCL?
+If AlltoCL = increase AND AlltoGL = increase --> Riippuu kumpi tuottaa enemmän
+
+<-- noissa toki myös mod inc ja high inc
+
+
+Joka pikselille valitaan korkein proteiini (ja kcal) tuotto --> tätä verrataan nykyiseen tuotantoon?
+
+Luultavasti eniten näitä:
+AlltoCL = increase AND AlltoGL = no potential --> AlltoCL?
+
+
+
+```{r}
+# Combine (note 21/27 mask)
+AlltoCL_AlltoGL_combined_nutrients_considered <-
+  classify(
+    protein_and_kcal_AlltoCL_recoded_fixed_21nutrients_not_decreasing,
+           cbind(NA, 0)) +
+  classify(
+    protein_and_kcal_AlltoGL_recoded_fixed_21nutrients_not_decreasing,
+    cbind(NA, 0))
+
+AlltoCL_AlltoGL_combined_nutrients_considered <-
+  mask(AlltoCL_AlltoGL_combined_nutrients_considered,
+       r_fraction_gl_cl_total_0toNA)
+
+unique(AlltoCL_AlltoGL_combined_nutrients_considered)# Number 0 there as there are many pixels where only some of potential land usage exist (e.g. value = 0 in All to CL scenario in Tibet when we use classify)
+plot(classify(protein_and_kcal_AlltoCL_recoded_fixed_21nutrients_not_decreasing,
+           cbind(NA, 0))) # Tästä näkyy 0 alueet!
+
+
+# Get unique combinations
+raster1_values <-
+  protein_and_kcal_AlltoCL_recoded_fixed_21nutrients_not_decreasing |> 
+  unique() |> pull()
+raster2_values <-
+  protein_and_kcal_AlltoGL_recoded_fixed_21nutrients_not_decreasing |> 
+  unique() |> pull()
+
+
+raster1_values <- c(raster1_values, 0) # added 0
+raster2_values <- c(raster2_values, 0) # 
+
+unique_combinations <- 
+  expand.grid(
+    raster1 = raster1_values,
+    raster2 = raster2_values)
+
+unique_combinations <- unique_combinations |> 
+  mutate(sum = rowSums(unique_combinations))
+
+# Suodatetaan vain ne rivit, joiden summa löytyy halutuista summista
+unique_combinations <- unique_combinations %>%
+  filter(sum %in% pull(unique(AlltoCL_AlltoGL_combined_nutrients_considered))) # Works!
+
+
+
+# Recode --> tarvitaan vain no potential alueet ja mod/high&very high increase mutta pitää tietää mistä tuotantomuodosta saavutetaan esim high increase
+unique_combinations$sum
+  #  -550     6   782 10005     5
+  #     7    11    13  -555     1
+  # 777 10000     0
+
+# Määritellään uusi reclassification matriisi --> huom: -555 = no potential (ei nyt väliä onko CL vai GL)
+# valitaan korkein tuotanto
+rcl_recode_combined <- matrix(c(
+  -555, -555, # -555+0, no pot AlltoCL = no pot 
+  -550, -555,  # -555+5, no pot AlltoCL & no pot AlltoGL = no pot
+  1, 1, # 1+0, mod pot AlltoCL = mod pot AlltoCL
+  5, -555, # 5+0, no pot AlltoGL = no pot 
+  6, 1,  # 1+5, mod pot AlltoCL & no pot AlltoGL = mod pot AlltoCL
+  7, 7, # 7+0, mod pot AlltoGL = mod pot AlltoGL
+  11, 11, # 11+0, high AlltoGL = high AlltoGL
+  13, 13, # 13+0, very high AlltoGL = very high AlltoGL
+  777, 777, # 777+0, high AlltoCL = high AlltoCL
+  782, 777, # 777+5, high AlltoCL & no pot AlltoGL = high AlltoCL
+  10000, 10000, # 10000+0, very high AlltoCL = very high AlltoCL
+  10005, 10000, # 10000+5, very high AlltoCL & no pot AlltoGL = very high AlltoCL
+  0, -555), # Potentially no pot AlltoCL & no pot AlltoGL = no pot
+  ncol = 2,
+  byrow = TRUE)
+  
+rcl_recode_combined
+
+# classify
+AlltoCL_AlltoGL_combined_nutrients_considered_recode <- 
+  classify(AlltoCL_AlltoGL_combined_nutrients_considered, 
+           rcl_recode_combined) 
+
+unique(AlltoCL_AlltoGL_combined_nutrients_considered_recode) # 7 values
+
+
+# Plot
+plot(AlltoCL_AlltoGL_combined_nutrients_considered_recode, 
+     col = c("yellow","green","red","black", "purple"))
+# Interpretation: Values 13 must be derived from GL raster, other values from CL raster
+#
+
+r_13 <- 
+  ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == 13, 1, NA)
+plot(r_13) # very fex pixels!
+global(r_13, "sum", na.rm=T) # 183 pixels anymore
+
+# how many AlltoGL pixels?
+ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode %in% c(7,11,13),
+     1, NA) |> global("sum", na.rm=T) # 196 pixels
+
+ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode %in% c(-555, 1,777,10000),
+     1, NA) |> global("sum", na.rm=T) # 599804	 pixels in AlltoCL, 1.4M total    
+```
+
+# Un-recode: how much more protein (and kcal) could be produced under these classes?
+
+-lasketaan eka proteiinille, sitten myös kcal
+- tarvitaan luokille 1, 777, 10000 rasterista AlltoCL
+- luokalle 13 rasterista AlltoGL
+- pitää myös tarkistaa luokat 7 ja 11 rasterista AlltoGL
+
+! Tätä ei välttis pakko tehdä!
+
+
+```{r}
+r_crop_prot_when_alltoCL_kg_perpix # 1, 777, 10000
+
+# CL - ifel not mandatory
+r_crop_prot_when_alltoCL_kg_perpix_class1 <- # 1= mod pot
+  mask(r_crop_prot_when_alltoCL_kg_perpix,
+       ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == 1, 
+            1, NA),
+       updatevalue= 0)
+
+r_crop_prot_when_alltoCL_kg_perpix_class777 <- # 777 = high
+  mask(r_crop_prot_when_alltoCL_kg_perpix,
+       ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == 777, 
+            1, NA),
+       updatevalue= 0)
+
+r_crop_prot_when_alltoCL_kg_perpix_class10000 <- # 10000 = very high
+  mask(r_crop_prot_when_alltoCL_kg_perpix,
+       ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == 10000, 
+            1, NA),
+       updatevalue= 0)
+
+
+# GL
+r_agb_prot_when_alltoGL_kg_perpix # 7, 11, 13
+
+r_agb_prot_when_alltoGL_kg_perpix_class7 <- # 7 = mod pot
+  mask(r_agb_prot_when_alltoGL_kg_perpix,
+       ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == 7, 
+            1, NA),
+       updatevalue= 0)
+
+r_agb_prot_when_alltoGL_kg_perpix_class11 <- # 11 = high
+  mask(r_agb_prot_when_alltoGL_kg_perpix,
+       ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == 11, 
+            1, NA),
+       updatevalue= 0)
+
+r_agb_prot_when_alltoGL_kg_perpix_class13 <- # 13 = very high
+  mask(r_agb_prot_when_alltoGL_kg_perpix,
+       ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == 13, 
+            1, NA),
+       updatevalue= 0)
+
+
+# - 555 areas (no potential for shift) --> use original combined yields here
+r_origprot_for_nopot_regions_kg_perpix <- 
+  ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == -555, 
+       r_protein_combined_kg_perpix, 
+       NA)
+global(r_origprot_for_nopot_regions_kg_perpix, "sum", na.rm=T)/1e9 # 334 MMT    
+
+
+r_origprot_kg_perpix_class1 <- 
+  ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == 1, 
+       r_protein_combined_kg_perpix, 
+       NA)
+
+r_origprot_kg_perpix_class777 <-
+  ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == 777, 
+       r_protein_combined_kg_perpix, 
+       NA)
+
+r_origprot_kg_perpix_class10000 <-
+  ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == 10000, 
+       r_protein_combined_kg_perpix, 
+       NA)
+
+r_origprot_kg_perpix_class7 <-
+  ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == 7, 
+       r_protein_combined_kg_perpix, 
+       NA)
+
+r_origprot_kg_perpix_class11 <-
+  ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == 11, 
+       r_protein_combined_kg_perpix, 
+       NA)
+
+r_origprot_kg_perpix_class13 <-
+  ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == 13, 
+       r_protein_combined_kg_perpix, 
+       NA)
+
+
+
+
+
+# Plot
+# convert values inside these masks to 1 for better visibility
+plot(ifel(r_crop_prot_when_alltoCL_kg_perpix_class1 > 0, 1, NA), main = "CL: mod pot") 
+plot(ifel(r_crop_prot_when_alltoCL_kg_perpix_class777 > 0, 1, NA), main = "CL: high")
+plot(ifel(r_crop_prot_when_alltoCL_kg_perpix_class10000 > 0, 1, NA), main = "CL: very high")
+
+plot(ifel(r_agb_prot_when_alltoGL_kg_perpix_class7 > 0, 1, NA), main = "GL: mod pot")
+plot(ifel(r_agb_prot_when_alltoGL_kg_perpix_class11 > 0, 1, NA), main = "GL: high")
+plot(ifel(r_agb_prot_when_alltoGL_kg_perpix_class13 > 0, 1, NA), main = "GL: very high")
+# Only 4 and 8 observations in classes 7 and 11 --> all the classes 7, 11 and 13 are from AlltoGL raster --> protein from there
+plot(ifel(r_origprot_for_nopot_regions_kg_perpix > 0, 1, NA), main = "No potential for shift - areas from original protein - maybe not accurate?")
+
+
+
+
+
+# Global sums for each classes (new protein production in MMT)
+global(r_crop_prot_when_alltoCL_kg_perpix_class1, "sum", na.rm=T)/1e9 # 110 MMT when threshold for no_pot = 2.0 
+global(r_crop_prot_when_alltoCL_kg_perpix_class777, "sum", na.rm=T)/1e9 # 42 MMT
+global(r_crop_prot_when_alltoCL_kg_perpix_class10000, "sum", na.rm=T)/1e9 # 347 MMT
+# Sum of above 3 is 499 MMT
+global(r_agb_prot_when_alltoGL_kg_perpix_class7, "sum", na.rm=T)/1e9 # 0 MMT
+global(r_agb_prot_when_alltoGL_kg_perpix_class11, "sum", na.rm=T)/1e9 # 0 MMT
+global(r_agb_prot_when_alltoGL_kg_perpix_class13, "sum", na.rm=T)/1e9 # 0 MMT
+
+
+
+# Original combined protein production on these areas
+global(r_origprot_for_nopot_regions_kg_perpix, "sum", na.rm=T)/1e9 # 334 MMT 
+# 334 out of 385 MMT of total combined protein on all agrland --> 87% (only 51 MMT less than the total of 385)
+global(r_origprot_kg_perpix_class1, "sum", na.rm=T)/1e9 # 40 MMT
+global(r_origprot_kg_perpix_class777, "sum", na.rm=T)/1e9 # 6 MMT
+global(r_origprot_kg_perpix_class10000, "sum", na.rm=T)/1e9 # 5 MMT
+global(r_origprot_kg_perpix_class7, "sum", na.rm=T)/1e9 # 0.005 MMT
+global(r_origprot_kg_perpix_class11, "sum", na.rm=T)/1e9 # 0.005 MMT
+global(r_origprot_kg_perpix_class13, "sum", na.rm=T)/1e9 # 0.005 MMT
+
+
+# Create final protein production raster by summing the values
+r_new_protein_production_kg_perpix <- # -555 areas are shown as 0 here!!!!!!!!!!!!!!! --> where there is -555 areas, there should be the original yields!
+  r_crop_prot_when_alltoCL_kg_perpix_class1 + 
+  r_crop_prot_when_alltoCL_kg_perpix_class777 + 
+  r_crop_prot_when_alltoCL_kg_perpix_class10000 + 
+  r_agb_prot_when_alltoGL_kg_perpix_class7 + 
+  r_agb_prot_when_alltoGL_kg_perpix_class11 + 
+  r_agb_prot_when_alltoGL_kg_perpix_class13
+
+
+plot(ifel(r_new_protein_production_kg_perpix > 0, 1, NA), main = "New prot where shifts are possible") # areas where shifts possible
+
+# Global sum
+global(r_new_protein_production_kg_perpix, "sum", na.rm=T)/1e9 # 499 MMT when threhshold for no_pot = 2.0 
+# this is only the new protein after shift, protein from no potential regions (-555 regions) not here
+# !! Important: this is higher than our previous estimate becaouse we don't allow increased protein production in regions where the increase would be less than 200% compared to the present situation
+# !! Thus, this analysis shows regions for the most promising shifts in protein production
+
+
+
+# Test using r_comparison_protein, where most efficient producer already selected
+# first, raster for masking
+ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == -555, -555, NA) |> 
+  plot(main = "Mask for no potential areas")
+
+r_comparison_protein_increase_areas <-
+  mask(r_comparison_protein,
+       ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == -555, 
+            -555, NA),
+       inverse = T,# interesting to try without inverse = T
+       updatevalue= 0)
+
+global(r_comparison_protein_increase_areas, "sum", na.rm=T)/1e9 # 499 MMT
+# SAME RESULT AS ABOVE!! : outside -555 areas the new protein production could be 449
+
+# The new protein from -555 areas would be higher than original protein production but we are not interested in those regions. Instead we just say there is no potential for additional protein production in those regions
+
+# Proteini: existing + new
+r_origprot_for_nopot_regions_new_prot_for_others_kg_perpix <- 
+  classify(r_origprot_for_nopot_regions_kg_perpix, cbind(NA,0)) + 
+  r_new_protein_production_kg_perpix
+
+r_origprot_for_nopot_regions_new_prot_for_others_kg_perpix <-
+  mask(r_origprot_for_nopot_regions_new_prot_for_others_kg_perpix,
+       r_fraction_gl_cl_total_0toNA)
+
+global(r_origprot_for_nopot_regions_new_prot_for_others_kg_perpix, "sum", na.rm=T)/1e9 # 833.5 MMT 
+# 833 =  499 + 334  (new + original combined)
+# 833/385 = 2.16 times more protein without 'reality check'
+
+```
+
+# SI >= 33
+
+Suitability index moderately or highly suitable
+
+```{r}
+AlltoCL_AlltoGL_combined_nutrients_considered_recode_SI33 <-
+  mask(AlltoCL_AlltoGL_combined_nutrients_considered_recode,
+       SI_gte_33)
+
+plot(AlltoCL_AlltoGL_combined_nutrients_considered_recode_SI33,
+     col = c("yellow","green","red","black", "purple"),
+     main = "Combined, nutrients, SImask")
+
+
+# mask those categories outside SIgte33
+r_origprot_for_nopot_regions_new_prot_for_others_kg_perpix_SI33 <-
+  mask(r_origprot_for_nopot_regions_new_prot_for_others_kg_perpix,
+       SI_gte_33)
+
+```
+
+
+# Conservation areas mask
+Further, mask results that are within SI >= 33 outside priority conservation areas
+
+
+```{r}
+# priority conservation areas
+r_areas_where_conversion_not_realistic_combined_5arcmin <-
+  rast(here("Data", "Intermediate_input",
+            "areas_where_conversion_not_realistic_glclareas_5arcmin.tif"))
+
+# after using this mask, we focus outside conservation priority regions
+reality_check_mask <-
+  mask(r_fraction_gl_cl_total_0toNA,
+       r_areas_where_conversion_not_realistic_combined_5arcmin,
+       inverse = T) 
+
+reality_check_mask <- 
+  ifel(reality_check_mask > 0, 1, NA)
+
+plot(r_areas_where_conversion_not_realistic_combined_5arcmin,
+     main = "These are areas where land use shifts are not realistic")
+plot(reality_check_mask,
+     main = "These are areas where shifts are realistic")
+
+
+# What areas we have outside these regions?
+mask(r_fraction_gl_cl_total_0toNA,
+     reality_check_mask) |> 
+  plot(main = "These are areas where where shifts are realistic")
+
+
+# Mask new+existing protein production outside conservation areas
+# Existing refers to -555 areas where the 'optimized' protein production is the original combined protein production
+r_orig_plus_new_prot_SIgte33_realitycheck_kg_perpix <-
+  mask(r_origprot_for_nopot_regions_new_prot_for_others_kg_perpix_SI33,
+       reality_check_mask)
+
+plot(ifel(r_orig_plus_new_prot_SIgte33_realitycheck_kg_perpix > 0,
+          1, NA), 
+     main = "Areas (also -555) where shifts possible SIgte33, outside cons areas")
+
+global(r_orig_plus_new_prot_SIgte33_realitycheck_kg_perpix, "sum", na.rm=T)/1e9 
+# 285.9638 MMT
+
+# Outside those regions, original prot was:
+mask(r_protein_combined_kg_perpix,
+     r_orig_plus_new_prot_SIgte33_realitycheck_kg_perpix,
+     inverse = T) |> global("sum", na.rm=T)/1e9 # 181
+
+# check that
+ifel(mask(r_protein_combined_kg_perpix,
+     r_orig_plus_new_prot_SIgte33_realitycheck_kg_perpix) > 0, 1, NA) |> plot(main = "original comb protein SIgte33 outside cons areas: -555 areas here?")
+
+ifel(r_orig_plus_new_prot_SIgte33_realitycheck_kg_perpix > 0, 1, NA) |> 
+  plot(main = "optimized protein production SIgte33 outside cons areas - -555 areas =0 here ")
+
+# additional mask:
+# original protein, SIgte33, outside conservation areas AND not in -555 areas
+mask(r_protein_combined_kg_perpix,
+     r_orig_plus_new_prot_SIgte33_realitycheck_kg_perpix) |> 
+  mask(ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == -555, 
+            NA, 
+            AlltoCL_AlltoGL_combined_nutrients_considered_recode)) |>
+  global("sum", na.rm=T)/1e9 
+# originally 14.92 MMT protein in these areas where we found there is potential
+  
+
+
+
+# test with recoded classes (works) --> Another way to do the same thing
+mask(AlltoCL_AlltoGL_combined_nutrients_considered_recode,
+     r_orig_plus_new_prot_SIgte33_realitycheck_kg_perpix) |> 
+  plot(main = "Areas where shift is possible (SIgte33, outside cons areas)",
+       col = pal_categories)
+
+# select other areas but not -555
+test_shifts_SIgte33_outside_conserv_areas <-
+  # First, mask outside "no potential" regions 
+  mask(AlltoCL_AlltoGL_combined_nutrients_considered_recode,
+       ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode == -555, 
+            NA, 
+            AlltoCL_AlltoGL_combined_nutrients_considered_recode)) |>
+  # Then, SIgte33 mask & outside conservation areas
+  mask(r_orig_plus_new_prot_SIgte33_realitycheck_kg_perpix)
+
+plot(test_shifts_SIgte33_outside_conserv_areas, col = pal_categories)
+
+# Protein production originally in these regions
+mask(r_protein_combined_kg_perpix,
+     test_shifts_SIgte33_outside_conserv_areas) |>
+  global("sum", na.rm=T)/1e9 # 14.92 MMT originally
+
+# New protein production in these regions
+mask(r_new_protein_production_kg_perpix,
+     test_shifts_SIgte33_outside_conserv_areas) |>
+  global("sum", na.rm=T)/1e9 # these could produce 96.99 MMT
+# Interpretation:
+96.99315	- 14.92007 # 82 MMT new protein (how many Mha area?)
+
+
+
+```
+
+# SIgte33 & conservative areas -maski luokitellulle kartalle
+
+This could be moved above
+
+```{r}
+# Nutrients & conservation priority regions
+AlltoCL_AlltoGL_combined_nutrients_conserv_areas <-
+  mask(AlltoCL_AlltoGL_combined_nutrients_considered_recode,
+       reality_check_mask)
+
+plot(AlltoCL_AlltoGL_combined_nutrients_conserv_areas,
+     col = c("yellow","green","red","black", "purple"),
+     main = "Shifts possible or not: outside conservation areas")
+
+# Nutrients & SI33 mask & conservation priority regions
+AlltoCL_AlltoGL_combined_nutrients_SI33_conserv_areas <-
+  mask(AlltoCL_AlltoGL_combined_nutrients_considered_recode_SI33,
+       reality_check_mask)
+
+plot(AlltoCL_AlltoGL_combined_nutrients_SI33_conserv_areas,
+     col = c("yellow","green","red","black", "purple"),
+     main = "Shifts possible or not: SIgte33, outside conservation areas")
+
+```
+
+
+
+
+
+
+
+# Summary of global sums --> in a chunk later
+
+```{r}
+# Original combined protein everywhere
+# global(r_protein_combined_kg_perpix, "sum", na.rm=T)/1e9 # 385.1329	
+# 
+# # Without 'reality check', the new optimized protein production (areas with mod, high or very high pot) + original protein production (areas with no pot) is
+# global(r_origprot_for_nopot_regions_new_prot_for_others_kg_perpix, "sum", na.rm=T)/1e9 # 833.5132	-- includes also AlltoGL
+# 
+# 
+# 
+# # New optimized vs original protein production
+# 833.5132/385.1329 # 2.16x higher
+# (833.5132-385.1329)/385.1329 # 116% higher
+# 
+# 
+# 
+# 
+# # new optimized in "mod pot" regs compared to original from the same area
+# # global(r_crop_prot_when_alltoCL_kg_perpix_class1, "sum", na.rm=T) /
+# #   global(r_origprot_kg_perpix_class1, "sum", na.rm=T) # 2.8
+# # # new optimized in "high pot" regs compared to original from the same area
+# # global(r_crop_prot_when_alltoCL_kg_perpix_class777, "sum", na.rm=T) /
+# #   global(r_origprot_kg_perpix_class777, "sum", na.rm=T) # 6.9
+# # # new optimized in "very high pot" regs compared to original from the same area
+# # global(r_crop_prot_when_alltoCL_kg_perpix_class10000, "sum", na.rm=T) /
+# #   global(r_origprot_kg_perpix_class10000, "sum", na.rm=T) # 65.4
+#   
+#   
+# 
+# 
+# 
+# 
+# ################################################################reality check
+# # (same things but SIgte33 mask & outside conservation areas)
+# # Original protein production outside conservation areas
+# global(mask(
+#   r_protein_combined_kg_perpix,
+#   r_areas_where_conversion_not_realistic_combined_5arcmin),
+#   "sum", na.rm=T)/1e9 # 224.796
+# 
+# # the new optimized + existing
+# global(r_orig_plus_new_prot_outside_conservation_areas_kg_perpix, "sum", na.rm=T)/1e9 # 341.5385
+# 
+# 
+# 
+# 
+# 341.5385/224.796 # 1.52x higher 
+# (341.5385- 224.796)/224.796 # 52% higher
+# 
+# 
+# # reality check, 'very high pot' category (no comparison yet)
+# ifel(AlltoCL_AlltoGL_combined_nutrients_conserv_areas == 10000,
+#      r_orig_plus_new_prot_outside_conservation_areas_kg_perpix,
+#      NA) |> 
+#   global("sum", na.rm=T)/1e9 # 79.04MMT --> new protein yield on these regs
+# 
+# # reality check, 'high pot' category (no comparison yet)
+# ifel(AlltoCL_AlltoGL_combined_nutrients_conserv_areas == 777,
+#      r_orig_plus_new_prot_outside_conservation_areas_kg_perpix,
+#      NA) |> 
+#   global("sum", na.rm=T)/1e9 # 16.3 MMT --> new protein yield on these regs
+# 
+# # reality check, 'mod pot' category (no comparison yet)
+# ifel(AlltoCL_AlltoGL_combined_nutrients_conserv_areas == 1,
+#      r_orig_plus_new_prot_outside_conservation_areas_kg_perpix,
+#      NA) |> 
+#   global("sum", na.rm=T)/1e9 # 40.3 MMT --> new protein yield on these regs
+# # 3 above sums to 79.04 + 16.3 + 40.3	= 136 MMT
+# 
+# # no need to derive original protein yields in these areas outside cons areas?
+# 
+# # If only 'very high pot' areas outside conservation areas would be converted, the total protein supply would increase by:
+# new_yield_if_veryhighpot_otherwise_original_outside_cons <-
+#   ifel(AlltoCL_AlltoGL_combined_nutrients_conserv_areas == 10000,
+#      r_orig_plus_new_prot_outside_conservation_areas_kg_perpix,
+#      r_protein_combined_kg_perpix)
+# global(new_yield_if_veryhighpot_otherwise_original_outside_cons, "sum", na.rm=T)/1e9 # 462.0976	 MMT
+# 462.0976	/385.1329 # 1.20x higher
+# (462.0976	-385.1329)/385.1329 # 20% higher
+# 
+# # note that same could have been found by
+# # mask(r_origprot_kg_perpix_class10000,
+# #        ifel(AlltoCL_AlltoGL_combined_nutrients_conserv_areas == 10000,1,NA)) |> 
+# #   global("sum", na.rm=T)/1e9 # 2.209522	and  #87.4 - 2.209522	 = 85.2 and 385.1329 + 85.2 # 470.3
+
+```
+# Global sums - energy
+
+```{r}
+# very_high_pot_mask <-
+#   ifel(AlltoCL_AlltoGL_combined_nutrients_conserv_areas == 10000,1,NA)
+# 
+# 
+# # Original combined energy production
+# global(r_energy_combined_MM_perpix*1e6, "sum", na.rm=T)/1e12 # 10575. trillion kcal
+# 
+# 
+# 
+# plot(very_high_pot_mask, 
+#      main = "Very high potential areas outside conservation areas")
+# 
+# r_comparison_energy # AlltoCL or AlltoGL selected depending on which one produces more
+# 
+# r_comparison_energy_where_veryhighpot_outside_consareas <- 
+#   mask(r_comparison_energy, very_high_pot_mask)
+# 
+# plot(ifel(r_comparison_energy_where_veryhighpot_outside_consareas > 0,1,NA))
+# 
+# global(r_comparison_energy_where_veryhighpot_outside_consareas*1e6, "sum", na.rm=T)/1e12 # 1504.122 trillion kcal
+# 
+# # Original energy production from the same regions
+# mask(r_energy_combined_MM_perpix*1e6,
+#      r_comparison_energy_where_veryhighpot_outside_consareas) |> 
+#   global("sum", na.rm=T)/1e12 #  33.32308	 trillion kcal
+# 
+# 1504.122/33.32308	 # 45x higher in these very hig regions 
+# 1504.122-33.32308	 # 1471 kcal more
+# 
+# 
+# new_yield_if_veryhighpot_otherwise_original_outside_cons_energy <-
+#   ifel(AlltoCL_AlltoGL_combined_nutrients_conserv_areas == 10000,
+#      r_comparison_energy,
+#      r_energy_combined_MM_perpix)
+# global(new_yield_if_veryhighpot_otherwise_original_outside_cons_energy*1e6, "sum", na.rm=T)/1e12 # 12046.23	 trillion kcal
+# 
+# 12046.23		/ 10575. # 1.14x higher
+# (12046.23		- 10575.)/10575. # 14% higher
+# 
+# 
+# # If only 'very high pot' areas outside conservation areas would be converted, the total energy supply would increase by: 214%
+
+```
+
+# Global sums of hectares
+
+! Note: since conversion potential in "AlltoCL" scenario means that gl is being converted to cl, the total area of new conversion should be calculated in grazing lands! --> r_fraction_gl_0toNA
+
+! AlltoGL covers so little areas that it does not matter in global sums 
+
+```{r}
+# Other than -555 areas - without reality check
+r_new_protein_production_kg_perpix_0toNA <-
+  classify(r_new_protein_production_kg_perpix, cbind(0, NA))
+
+r_new_protein_production_area <-
+  cellSize(r_new_protein_production_kg_perpix_0toNA, unit ="ha") *
+  r_fraction_gl_0toNA |> 
+  mask(r_new_protein_production_kg_perpix_0toNA)
+
+plot(r_new_protein_production_area, main = "Area in ha of new protein production")
+
+global(r_new_protein_production_area, "sum", na.rm=T)/1e6 # 1406.914 Mha
+# Interpretation:
+# If NOT considering conservation areas, the total area that could be converted to protein production is 1.407 billion hectares
+
+
+######################################################## SIgte33 & outside cons regions
+r_new_protein_production_area_SIgte33_outside_cons_areas <-
+  cellSize(r_new_protein_production_kg_perpix_0toNA, unit ="ha") *
+  r_fraction_gl_0toNA |> 
+  mask(ifel(AlltoCL_AlltoGL_combined_nutrients_SI33_conserv_areas != -555,
+     AlltoCL_AlltoGL_combined_nutrients_SI33_conserv_areas,
+     NA) )
+
+plot(r_new_protein_production_area_SIgte33_outside_cons_areas,
+     main = "Area in ha of new protein production, SIgte33, outside conservation areas")
+
+global(r_new_protein_production_area_SIgte33_outside_cons_areas, "sum", na.rm=T)/1e6 # 358.5606	 Mha
+# Interpretation:
+# If considering SIgte33 areas and conservation areas, the total area that could be converted to protein production is 359 million hectares
+# ----> how much is this in relation to the total gl area of 3151.204?
+358.5606		/ 3151.204 # 11% of all grazing lands, thus 89% of all grazing lands are not likely to benefit significantly from the conversion
+
+```
+
+# Save rasters
+
+```{r}
+protein_and_kcal_AlltoCL_recoded_fixed
+protein_and_kcal_AlltoGL_recoded_fixed
+AlltoCL_AlltoGL_combined_nutrients_considered_recode
+AlltoCL_AlltoGL_combined_nutrients_conserv_areas
+
+writeRaster(protein_and_kcal_AlltoCL_recoded_fixed, filename = 
+              here("Data", "Intermediate_input", "protein_and_kcal_AlltoCL_recoded_fixed.tif"), overwrite = TRUE)
+writeRaster(protein_and_kcal_AlltoGL_recoded_fixed, filename =
+              here("Data", "Intermediate_input", "protein_and_kcal_AlltoGL_recoded_fixed.tif"), overwrite = TRUE)
+
+writeRaster(AlltoCL_AlltoGL_combined_nutrients_considered_recode, filename =
+              here("Data", "Intermediate_input", "AlltoCL_AlltoGL_combined_nutrients_considered_recode.tif"), overwrite = TRUE)
+
+
+writeRaster(AlltoCL_AlltoGL_combined_nutrients_considered_recode_SI33, filename =
+              here("Data", "Intermediate_input", "AlltoCL_AlltoGL_combined_nutrients_considered_recode_SI33.tif"), overwrite = TRUE)
+
+
+writeRaster(AlltoCL_AlltoGL_combined_nutrients_SI33_conserv_areas, filename =
+              here("Data", "Intermediate_input", "AlltoCL_AlltoGL_combined_nutrients_SI33_conserv_areas.tif"), overwrite = TRUE)
+
+
+
+
+########### Get the files
+protein_and_kcal_AlltoCL_recoded_fixed <- 
+  here("Data", "Intermediate_input", "protein_and_kcal_AlltoCL_recoded_fixed.tif") |> 
+  rast()
+
+protein_and_kcal_AlltoGL_recoded_fixed <-
+  here("Data", "Intermediate_input", "protein_and_kcal_AlltoGL_recoded_fixed.tif") |> 
+  rast()
+
+
+AlltoCL_AlltoGL_combined_nutrients_considered_recode <-
+  here("Data", "Intermediate_input", "AlltoCL_AlltoGL_combined_nutrients_considered_recode.tif") |> 
+  rast()
+
+AlltoCL_AlltoGL_combined_nutrients_considered_recode_SI33 <-
+  here("Data", "Intermediate_input", "AlltoCL_AlltoGL_combined_nutrients_considered_recode_SI33.tif") |> 
+  rast()
+
+AlltoCL_AlltoGL_combined_nutrients_SI33_conserv_areas <-
+  here("Data", "Intermediate_input", "AlltoCL_AlltoGL_combined_nutrients_SI33_conserv_areas.tif") |> 
+  rast()
+
+
+
+
+```
+
+# Table for fig 4
+
+```{r}
+# -------------------------------------------------------- All agricultural land
+# Original protein and energy
+global(r_protein_combined_kg_perpix, "sum", na.rm=T)/1e9 # 385.1329 MMT
+global(r_energy_combined_MM_perpix*1e6, "sum", na.rm=T)/1e12 # 10575.44 trillion kcal
+
+
+# AlltoCL protein and energy
+# protein CL
+protein_AlltoCL <-
+  ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode %in% c(1, 777, 10000),
+       r_crop_prot_when_alltoCL_kg_perpix,
+       r_protein_combined_kg_perpix)
+global(protein_AlltoCL, "sum", na.rm=T)/1e9 # 834.5177
+833.5177	/ 385.1329 # shift ratio 2.16x 
+#--> production would be 2.16x higher if all agrland would be converted to cl
+
+# energy CL
+energy_AlltoCL <- 
+  ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode %in% c(1, 777, 10000),
+       r_crop_kcal_when_alltoCL_MM_perpix,
+       r_energy_combined_MM_perpix)
+global(energy_AlltoCL*1e6, "sum", na.rm=T)/1e12 # 17404.89
+17404.89 / 10575.44 # 1.6x
+
+# Protein in AlltoGL
+protein_AlltoGL <-
+  ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode %in% c(7, 11, 13),
+       r_agb_prot_when_alltoGL_kg_perpix,
+       r_protein_combined_kg_perpix)
+global(protein_AlltoGL, "sum", na.rm=T)/1e9 # 385.1329
+385.1329	/ 385.1329 
+
+# Energy in AlltoGL
+energy_AlltoGL <- 
+  ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode %in% c(7, 11, 13),
+       r_agb_kcal_when_alltoGL_MM_perpix,
+       r_energy_combined_MM_perpix)
+global(energy_AlltoGL*1e6, "sum", na.rm=T)/1e12 # 10575.44
+10575.44	/ 10575.44
+
+df_fig4_table_nomask <- data.frame(
+  protein_baseline = 
+    pull(global(r_protein_combined_kg_perpix, "sum", na.rm=T)/1e9),
+  energy_baseline = 
+    pull(global(r_energy_combined_MM_perpix*1e6, "sum", na.rm=T)/1e12),
+  protein_AlltoCL = 
+    pull(global(protein_AlltoCL, "sum", na.rm=T)/1e9),
+  energy_AlltoCL = 
+    pull(global(energy_AlltoCL*1e6, "sum", na.rm=T)/1e12),
+  protein_AlltoGL = 
+    pull(global(protein_AlltoGL, "sum", na.rm=T)/1e9),
+  energy_AlltoGL = 
+    pull(global(energy_AlltoGL*1e6, "sum", na.rm=T)/1e12)
+  ) |> 
+  # add additions and shifts (no GL shifts, they are 1)
+  mutate(
+    extra_protein = protein_AlltoCL - protein_baseline,
+    extra_energy = energy_AlltoCL - energy_baseline,
+    # optimized_protein = protein_baseline + extra_protein,
+    # optimized_energy = energy_baseline + extra_energy,
+    shift_protein = protein_AlltoCL/protein_baseline,
+    shift_energy = energy_AlltoCL/energy_baseline) |> 
+  round(digits=3)
+
+#View(df_fig4_table_nomask)
+
+
+# -------------------------------------------------------- Combined SIgte33 mask
+# baseline protein in these regions --> maybe not needed as we alsways want to compare to the baseline!
+protein_baseline_SIgte33 <-
+  mask(r_protein_combined_kg_perpix,
+       SI_gte_33)
+global(protein_baseline_SIgte33, "sum", na.rm=T)/1e9 # 318.6059
+# baseline energy
+energy_baseline_SIgte33 <-
+  mask(r_energy_combined_MM_perpix,
+       SI_gte_33)
+global(energy_baseline_SIgte33*1e6, "sum", na.rm=T)/1e12 # 8979.369
+
+
+
+# AlltoCL
+# protein
+protein_AlltoCL_SIgte33 <-
+  # if some potential in AlltoCL raster that is masked to "potential" regs
+  ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode_SI33 %in% 
+         c(1, 777, 10000), 
+       # use optimized AlltoCL raster for grid cells containing those values
+       r_crop_prot_when_alltoCL_kg_perpix,
+       # Otherwise (i.e., if no potential), use baseline raster
+       # that is masked to SIgte33 regions
+       mask(r_protein_combined_kg_perpix,
+            SI_gte_33))
+global(protein_AlltoCL_SIgte33, "sum", na.rm=T)/1e9 # 507.779
+507.779 /  318.6059 # production +1.59x if AlltoCL in these SIgte33 regs
+
+# energy
+energy_AlltoCL_SIgte33 <-
+  ifel(AlltoCL_AlltoGL_combined_nutrients_considered_recode_SI33 %in% 
+         c(1, 777, 10000), 
+       r_crop_kcal_when_alltoCL_MM_perpix,
+       mask(r_energy_combined_MM_perpix,
+            SI_gte_33))
+global(energy_AlltoCL_SIgte33*1e6, "sum", na.rm=T)/1e12 # 13339.01 trillion kcal
+13339.01 /  8979.369 # production +1.49x if AlltoCL in these SIgte33 regs
+
+
+df_fig4_table_SIgte33 <- data.frame(
+  protein_baseline = 
+    pull(global(r_protein_combined_kg_perpix, "sum", na.rm=T)/1e9),
+  energy_baseline = 
+    pull(global(r_energy_combined_MM_perpix*1e6, "sum", na.rm=T)/1e12),
+  protein_baseline_SIgte33 = 
+    pull(global(protein_baseline_SIgte33, "sum", na.rm=T)/1e9),
+  energy_baseline_SIgte33 =
+    pull(global(energy_baseline_SIgte33*1e6, "sum", na.rm=T)/1e12),
+  
+  protein_AlltoCL_SIgte33 =
+    pull(global(protein_AlltoCL_SIgte33, "sum", na.rm=T)/1e9), # existing + new
+  energy_AlltoCL_SIgte33 =
+    pull(global(energy_AlltoCL_SIgte33*1e6, "sum", na.rm=T)/1e12)) |> 
+  # additions and shifts in these regions  
+  mutate(
+    extra_protein_SIgte33 = protein_AlltoCL_SIgte33 - protein_baseline_SIgte33,
+    extra_energy_SIgte33 = energy_AlltoCL_SIgte33 - energy_baseline_SIgte33,
+    shift_protein_SIgte33 = 
+      (protein_baseline + extra_protein_SIgte33) / protein_baseline,
+    shift_energy_SIgte33 =
+      (energy_baseline + extra_energy_SIgte33) / energy_baseline) |> 
+  round(digits = 3)
+
+
+df_fig4_table_SIgte33 #  View()
+
+
+
+
+
+
+# -------------------------------------------------------- nutr, SI, cons
+# Further mask outside cons areas
+# Original protein and energy
+protein_baseline_SIgte33_outside_cons_areas <- 
+  mask(r_protein_combined_kg_perpix,
+       SI_gte_33) |> 
+  mask(reality_check_mask)
+
+global(protein_baseline_SIgte33_outside_cons_areas, "sum", na.rm=T)/1e9 #  203.8907
+# originally, there is 204 MMT protein in these areas
+# plot(ifel(protein_baseline_SIgte33_outside_cons_areas > 0, 1, NA),
+#      main = "Areas where shifts are viable")
+
+energy_baseline_SIgte33_outside_cons_areas <- # nutrients maintained!
+    mask(r_energy_combined_MM_perpix,
+         SI_gte_33) |>
+    mask(reality_check_mask)
+         
+global(energy_baseline_SIgte33_outside_cons_areas*1e6, "sum", na.rm=T)/1e12 #  5961.572 trillion kcals originally in these regions
+
+
+
+
+# AlltoCL protein and energy outside conservation areas
+# protein
+protein_AlltoCL_SIgte33_outside_consareas <-
+  # if mod, high or very high potential classes in AlltoCL scenario,
+  # this is the same as "new" protein values
+  ifel(AlltoCL_AlltoGL_combined_nutrients_SI33_conserv_areas %in% 
+         c(1, 777, 10000),
+       # use AlltoCL protein values
+       r_crop_prot_when_alltoCL_kg_perpix,
+       # otherwise, use 'no pot' protein values that are outside SI33&cons areas
+       # AND nutr balance is maintained
+       # i.e., this is original protein on regions where conversion is not realistic
+       mask(r_protein_combined_kg_perpix, 
+            protein_baseline_SIgte33_outside_cons_areas) 
+       ) # use original protein values that are masked to SIgte33 areas outside cons areas and to areas where nutrient balance is maintained
+global(protein_AlltoCL_SIgte33_outside_consareas, "sum", na.rm=T)/1e9 # 285.9638 
+285.9638		/   203.8907 # shift ratio 1.4
+# Interpretation: 
+# +1.4x protein in these SIgte33 & outside cons areas if AlltoCL is implemented
+
+# energy
+energy_AlltoCL_SIgte33_outside_consareas <-
+  ifel(AlltoCL_AlltoGL_combined_nutrients_SI33_conserv_areas %in% 
+         c(1, 777, 10000),
+       r_crop_kcal_when_alltoCL_MM_perpix,
+       mask(r_energy_combined_MM_perpix,
+            energy_baseline_SIgte33_outside_cons_areas))
+
+global(energy_AlltoCL_SIgte33_outside_consareas*1e6, "sum", na.rm=T)/1e12 # 7957
+7956.772	/ 5961.572 # 1.33
+
+
+
+# AlltoGL protein and energy -- tested that same as original prot and kcal
+# protein
+# protein_AlltoGL_SIgte33_outside_consareas <-
+#   ifel(AlltoCL_AlltoGL_combined_nutrients_SI33_conserv_areas %in%
+#          c(7, 11, 13),
+#        r_agb_prot_when_alltoGL_kg_perpix,
+#        mask(r_protein_combined_kg_perpix,
+#             protein_baseline_SIgte33_outside_cons_areas)
+#        )
+# global(protein_AlltoGL_SIgte33_outside_consareas, "sum", na.rm=T)/1e9 # 203.89 --> ratio 1
+# 
+# # energy
+# energy_AlltoGL_SIgte33_outside_consareas <-
+#   ifel(AlltoCL_AlltoGL_combined_nutrients_SI33_conserv_areas %in% 
+#          c(7, 11, 13),
+#        r_agb_kcal_when_alltoGL_MM_perpix,
+#        mask(r_energy_combined_MM_perpix,
+#             energy_baseline_SIgte33_outside_cons_areas)
+#        )
+# global(energy_AlltoGL_SIgte33_outside_consareas*1e6, "sum", na.rm=T)/1e12 # 5961.572	 --> ratio 1
+
+df_fig4_table_SIgte33_realitycheck <- data.frame(
+  protein_baseline = 
+    pull(global(r_protein_combined_kg_perpix, "sum", na.rm=T)/1e9),
+  energy_baseline =
+    pull(global(r_energy_combined_MM_perpix*1e6, "sum", na.rm=T)/1e12),
+  
+  protein_baseline_SIgte33_outside_cons_areas = 
+    pull(global(protein_baseline_SIgte33_outside_cons_areas, "sum", na.rm=T)/1e9),
+  energy_baseline_SIgte33_outside_cons_areas =
+    pull(global(energy_baseline_SIgte33_outside_cons_areas*1e6, "sum",
+                na.rm=T)/1e12),
+  
+  protein_AlltoCL_SIgte33_outside_consareas =
+    pull(global(protein_AlltoCL_SIgte33_outside_consareas, "sum", na.rm=T)/1e9),
+  energy_AlltoCL_SIgte33_outside_consareas =
+    pull(global(energy_AlltoCL_SIgte33_outside_consareas*1e6, "sum",na.rm=T)/1e12)) |> 
+  mutate(
+    extra_protein_SIgte33_outside_consareas =
+      protein_AlltoCL_SIgte33_outside_consareas -
+      protein_baseline_SIgte33_outside_cons_areas,
+    extra_energy_SIgte33_outside_consareas =
+      energy_AlltoCL_SIgte33_outside_consareas - 
+      energy_baseline_SIgte33_outside_cons_areas,
+    
+    shift_protein_SIgte33_outside_consareas = 
+      (protein_baseline + extra_protein_SIgte33_outside_consareas) /
+      protein_baseline,
+    shift_energy_SIgte33_outside_consareas =
+      (energy_baseline + extra_energy_SIgte33_outside_consareas) / 
+      energy_baseline) |> 
+  round(digits = 3)
+
+# test: 
+# global(r_orig_plus_new_prot_SIgte33_realitycheck_kg_perpix, "sum", na.rm=T)/1e9 # 285.9638
+
+  
+
+df_fig4_table_SIgte33_realitycheck
+
+```
+
+
+

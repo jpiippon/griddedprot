@@ -12,11 +12,25 @@ Estimate how much the crop protein yield would be in grazing lands that could be
 # Data and packages
 
 ```{r}
-# SI
-SI_plant_spesific_5arcmin <- 
-  here("Data", "Input", "Zabel22_SI",
-       "plantspecific_suitabilititiesl_for_crops_1to17_1980_2009hist_5arcmin.tif") %>% 
-  rast() # maybe kok[kok<1]<- NA
+# SI --> changed to correct
+SI_plant_spesific_5arcmin <-
+  here("Data", "Input", "from_harddrive",
+       "plantspesific_suitabilities1_17_2010_2039_rcp8p5_r_5arcmin.tif") %>% # created in 4tb suitabilities script 
+  rast()
+ names(SI_plant_spesific_5arcmin)
+#  [1] "plantspecific_suitability_1"  "plantspecific_suitability_10"
+#  [3] "plantspecific_suitability_11" "plantspecific_suitability_12"
+#  [5] "plantspecific_suitability_13" "plantspecific_suitability_14"
+#  [7] "plantspecific_suitability_15" "plantspecific_suitability_16"
+#  [9] "plantspecific_suitability_17" "plantspecific_suitability_2" 
+# [11] "plantspecific_suitability_3"  "plantspecific_suitability_4" 
+# [13] "plantspecific_suitability_5"  "plantspecific_suitability_6" 
+# [15] "plantspecific_suitability_7"  "plantspecific_suitability_8" 
+# [17] "plantspecific_suitability_9" 
+ names(SI_plant_spesific_5arcmin) <-
+   c("plnt1", "plnt10", "plnt11", "plnt12", "plnt13", "plnt14", "plnt15", "plnt16", "plnt17",
+     "plnt2", "plnt3", "plnt4", "plnt5", "plnt6", "plnt7", "plnt8", "plnt9")
+
 
 # this is not a good idea (plan was to run regression only for SI > 0 values but it does remove too much data)
 #SI_plant_spesific_5arcmin <- classify(SI_plant_spesific_5arcmin, cbind(0, NA))
@@ -34,8 +48,10 @@ r_protein_and_SI_crops <- c(r_prot_allcrops_sum_kg_ha, SI_plant_spesific_5arcmin
 
 
 
-
+hist(ifel(r_prot_allcrops_sum_kg_ha > 826, NA, r_prot_allcrops_sum_kg_ha), breaks = 100)
 #plot(r_protein_and_SI_crops)
+
+SI_plant_spesific_5arcmin |> plot()
 ```
 
 
@@ -149,7 +165,7 @@ country_df_list <- map2(country_df_list, outlier_level_list_0_90, ~.x %>%
 #                                    dplyr::select(-c(x, y)))
 # # # # 
 # # 
-# country_df_list[[53]] # # data for regression
+country_df_list[[53]] # # data for regression
 
 
 
@@ -458,7 +474,7 @@ r_predicted_protein_yield_kg_ha <-
 # summary(r_predicted_protein_yield_outside_cl_but_in_gl_areas_and_in_suitable_areas_kg_ha)
 # summary(r_prot_allcrops_sum_kg_ha)  
   
-pal_protein_lajolla <- scico(n = 6, palette = "lajolla", end = 0.85) 
+pal_protein_lajolla <- scico(n = 6, palette = "lajolla", begin = 0.15, end = 1, direction = -1) # previously ended 0.85
 
 (plt_crop_protein_predicted <- 
   create_index_map(r_index = r_predicted_protein_yield_kg_ha,
@@ -559,10 +575,10 @@ r_crop_prot_existing_plus_new_areas_kg_ha <-
 
 
 
-writeRaster(r_crop_prot_existing_plus_new_areas_kg_ha,
-            filename= here("Data", "Intermediate_input", 
-                           "r_crop_prot_existing_plus_new_areas_kg_ha.tif"),
-            overwrite = T)
+# writeRaster(r_crop_prot_existing_plus_new_areas_kg_ha,
+#             filename= here("Data", "Intermediate_input", 
+#                            "r_crop_prot_existing_plus_Regression_predicted_to_new_areas_kg_ha.tif"),
+#             overwrite = T)
 ```
 
 
@@ -580,7 +596,7 @@ r_predicted_protein_yield_croplandmask_kg_perpix <-
   cellSize(r_predicted_protein_yield_croplandmask_kg_ha, unit = "ha") *
   r_fraction_cl_0toNA
 
-global(r_predicted_protein_yield_croplandmask_kg_perpix, "sum", na.rm=T)/1e9 # 213
+global(r_predicted_protein_yield_croplandmask_kg_perpix, "sum", na.rm=T)/1e9 # 235 mmt on current cl areas
 
 
 
@@ -591,7 +607,7 @@ r_predicted_protein_yield_outside_cl_but_in_gl_areas_kg_perpix <-
   cellSize(r_predicted_protein_yield_outside_cl_but_in_gl_areas_kg_ha, unit ="ha") *
   r_fraction_gl_0toNA
 
-global(r_predicted_protein_yield_outside_cl_but_in_gl_areas_kg_perpix, "sum", na.rm=T)/1e9 # 137
+global(r_predicted_protein_yield_outside_cl_but_in_gl_areas_kg_perpix, "sum", na.rm=T)/1e9 # 273
 
 
 

@@ -1,7 +1,10 @@
 
 Protein production capacity from aboveground biomass (AGB)
 
+? nyt vuosi 2020 --> pitäisikö olla mediaani vuosista 2018-2022
 
+# !!!!!!!!!!!!!!!!! vaihdettu reviisiossa
+- valittu vuosi 2020 ja kaikki Y2010 vaihdettu Y2020
 
 
 # Calculate protein to energy conversion using FAOSTAT statistics
@@ -11,7 +14,8 @@ Protein production capacity from aboveground biomass (AGB)
 foodBalanceSheets_semiraw <-
   here("Data", "Input", "faostat", "foodBalanceSheets_E_All_Data_NOFLAG.csv") %>% 
   read.csv() %>% 
-  dplyr::select(-Element.Code,-Unit ,-c(Y2011:Y2019))
+  # dplyr::select(-Element.Code,-Unit ,-c(Y2011:Y2019))
+  dplyr::select(-Element.Code,-Unit , -c(Y2010:Y2019), -c(Y2021)) #
 
 
 my_elementlist_fao <- c(
@@ -34,7 +38,7 @@ fbs_animals <- foodBalanceSheets_semiraw %>%
 
  ## pivot wider
 fbs_animals_wide <- fbs_animals %>% 
-  pivot_wider(names_from = Element, values_from = Y2010) %>% 
+  pivot_wider(names_from = Element, values_from = Y2020) %>% 
   rename(prod_1000mt = "Production", # eg numbers in FIN equals Lukestat
          supply.KgCapYr = "Food supply quantity (kg/capita/yr)",
          supply.KcalCapD = "Food supply (kcal/capita/day)",
@@ -44,7 +48,9 @@ fbs_animals_wide <- fbs_animals %>%
   ## how many kcal do we get from amount of meat containing one kg of protein - required for simple conversion from protein production to energy production
   ## create variable protein to kcal 
   mutate(one_kg_prot_to_kcal =  (supply.KcalCapD / prot.gCapD) * 1000,
+   #      one_kg_prot_to_kg_meat_product = ((supply.KgCapYr/365*1000) / prot.gCapD),
          protein_fraction = (prot.gCapD*365/1000) / supply.KgCapYr) %>% # protein fraction for meat products -- not even needed?
+  # one_kg_prot_to_kg_meat_product is the same as 1/protein_fraction
   dplyr::select(-Item.Code) %>% 
   
   
@@ -122,17 +128,17 @@ fbs_animals_wide_filled <-
 
 
 # Add Sudan rows to South Sudan (give new FAO id etc to South Sudan but use other values from Sudan)
-sudan <- fbs_animals_wide_filled %>% 
-  filter(Area == "Sudan") %>% 
-  dplyr::select(-Area.Code, -Area)
-
-south_sudan <- sudan %>% 
-  mutate(Area.Code = 277,
-         Area = "South Sudan")
-
-# Combine to the fbs_animals_wide_filled
-fbs_animals_wide_filled <- 
-  rbind(fbs_animals_wide_filled, south_sudan)
+# sudan <- fbs_animals_wide_filled %>% 
+#   filter(Area == "Sudan") %>% 
+#   dplyr::select(-Area.Code, -Area)
+# 
+# south_sudan <- sudan %>% 
+#   mutate(Area.Code = 277,
+#          Area = "South Sudan")
+# 
+# # Combine to the fbs_animals_wide_filled
+# fbs_animals_wide_filled <- 
+#   rbind(fbs_animals_wide_filled, south_sudan)
 ```
 
 
@@ -157,16 +163,24 @@ r_fraction_gl_NAto0 <- classify(r_fraction_gl, cbind(NA,0))
 
 
 # Simulated AGB (median over 2008-2012) masked to HYDE areas (some areas, where IGBP classes 6-10or16 are not covered are not present in this AGB data. But they are visible in r_fraction_gl)
-r_agb_5y_med_in_hyde_gl_kg_ha <-
+# !! update -- year 2020
+r_agb_2020_in_hyde_gl_kg_ha <-
   here("Data", "Input", "from_harddrive",
-       "5y_medAGB_withIGPB6to10or16_in_hydeareas_kg_ha_5arcmin.tif") %>% 
+       "AGB2020_withIGPB6to10or16_in_hydeareas_kg_ha_5arcmin.tif") %>% 
   rast()
+# old
+# r_agb_5y_med_in_hyde_gl_kg_ha <-
+#   here("Data", "Input", "from_harddrive",
+#        "5y_medAGB_withIGPB6to10or16_in_hydeareas_kg_ha_5arcmin.tif") %>% 
+#   rast()
 
 
  ## AGB per pixel without any cropland mask. present result kg km2 but this is for global sums
 r_agb_kg_perpix <-
-  r_agb_5y_med_in_hyde_gl_kg_ha * 
-  cellSize(r_agb_5y_med_in_hyde_gl_kg_ha, unit = "ha") * 
+  r_agb_2020_in_hyde_gl_kg_ha *
+  cellSize(r_agb_2020_in_hyde_gl_kg_ha, unit = "ha") *
+  # r_agb_5y_med_in_hyde_gl_kg_ha * 
+  # cellSize(r_agb_5y_med_in_hyde_gl_kg_ha, unit = "ha") * 
   r_fraction_gl
 
 
@@ -360,6 +374,11 @@ r_fcr <-
   rasterize(adm_10m_fao_id_simple_combined_with_fcr,
             template_rast_5arcmin,
             field = "FCR_kgDMperkgProtein")
+
+global(r_fcr, "mean", na.rm = T) # 222
+median(values(r_fcr), na.rm = T) # 187
+
+
 plot(r_fcr, main = "FCR for each country. Unit: kgDM/kgProtein")
 
 # writeRaster(r_fcr,
@@ -444,12 +463,23 @@ Unfortunately, this data cannot be shared. It can be requested from Mario Herrer
 ```{r}
 # ------------------------------------------------ protein from AGB per ha
 r_protein_from_AGB_kg_ha <-
-  r_agb_5y_med_in_hyde_gl_kg_ha / r_fcr 
+  r_agb_2020_in_hyde_gl_kg_ha / r_fcr
+  #r_agb_5y_med_in_hyde_gl_kg_ha / r_fcr 
 
 names(r_protein_from_AGB_kg_ha) <- c("current_herd_str") #, "average"
 
 plot(r_protein_from_AGB_kg_ha, 
      main = "protein from AGB when 43% of AGB is used ") 
+
+# !! bit different extent
+# kok <- r_protein_from_AGB_kg_ha$current_herd_str
+# kok <- ifel(kok > 0, 1, NA)
+# 
+# kok2 <- r_fraction_gl_0toNA
+# kok2 <- ifel(kok2 > 0, 1, NA)
+# 
+# plot(kok)
+# plot(kok2)
 
 
 
@@ -520,9 +550,13 @@ Convert per ha values to perpix
 
 
 ```{r}
+# Total sustainable AGB amount in petagrams
+global(1000*r_agb_kg_perpix, "sum", na.rm = T)/1e15 # 1.7 pg --> 1.7 million tons compared to 6 of Mottet et al
+global(1000*(r_agb_kg_perpix/0.42), "sum", na.rm = T)/1e15 # 4 without PUF - still very cautious / small
+
 # Total protein produce
-  # with current: 10.6 mmt
-global(r_protein_from_AGB_kg_perpix, fun = "sum", na.rm = T)/1e9 # 10.6427
+  # with current: 9.7
+global(r_protein_from_AGB_kg_perpix, fun = "sum", na.rm = T)/1e9 # 9.7 
 
 
 
@@ -555,23 +589,23 @@ global(r_protein_from_AGB_kg_perpix, fun = "sum", na.rm = T)/1e9 # 10.6427
 
 
 ###-------------------------------------------- Calculate g protein per day per capita
-  # based on FAOSTAT population in 2010 was 6869581.88 * 1000 persons
+  # based on FAOSTAT population in 2020 was 7791709 * 1000 persons
 (1000 * global(r_protein_from_AGB_kg_perpix, fun = "sum", na.rm = T)) / # gram
-  (1000* foodBalanceSheets_semiraw %>% filter(Area == "World", Item == "Population") %>% pull(Y2010)) / # persons
+  (1000* foodBalanceSheets_semiraw %>% filter(Area == "World", Item == "Population") %>% pull(Y2020)) / # persons
   365  # days in a year
-# 4.2 g/capita/d with current herd structures
+# 3.4 g/capita/d with current herd structures
 
     # compare this to daily requirements (http://dx.doi.org/10.1016/S0140-6736(18)31788-4)
-    # average person weight = 70kg and protein need = 0.8 per kg
-((1000 * global(r_protein_from_AGB_kg_perpix, fun = "sum", na.rm = T)) / # gram
-  (1000* foodBalanceSheets_semiraw %>% filter(Area == "World", Item == "Population") %>% pull(Y2010)) / # persons
+    # average person weight = 70kg and protein need = 0.8 per kg --> needs 56g of protein per day
+((1000 * global(r_protein_from_AGB_kg_perpix, fun = "sum", na.rm = T)) / # gram of protein
+  (1000* foodBalanceSheets_semiraw %>% filter(Area == "World", Item == "Population") %>% pull(Y2020)) / # persons
   365 ) /# days in a year
-  (0.8*70) # 8%
+  (0.8*70) # 6% (if all population adults and distributed evenly...)
 
     # for who many persons this would be enough?
-    # in 2010 people would need 56g * 365d = 20440 g. Our esimate would be enough for 
-(1000 * global(r_protein_from_AGB_kg_perpix, fun = "sum", na.rm = T)) /
-    (0.8*70*365) / # 20440
+    # in 2020 a people would need 56g * 365d = 20440 g = 20.4kg protein in a year. Our esimate would be enough for 
+(1000 * global(r_protein_from_AGB_kg_perpix, fun = "sum", na.rm = T)) / # total protein in grams
+    (0.8*70*365) / # 20440 grams needed in a year
   1e6 
 
 
@@ -594,38 +628,37 @@ mean(van_zanten_protein_milk_g_capita_day) # mean 7.3 t capita day
 
 
 
-# Rasterize protein fraction - not needed!
+# Rasterize protein fraction - not needed here!
 
 ```{r}
 #fbs_animals_wide_filled$protein_fraction %>% hist()
 
 # combine fbs_animals_wide_filled with geometries
 
+faoid_and_protein_fraction  <-
+  fbs_animals_wide_filled %>%
+  filter(Item == "Meat") %>% # Bovine meat
+  dplyr::select(Area.Code, protein_fraction)
 
-# faoid_and_protein_fraction  <- 
-#   fbs_animals_wide_filled %>%
-#   filter(Item == "Meat") %>%
-#   dplyr::select(Area.Code, protein_fraction)
-# 
-# ## create reclassification matrix
-# rcl_mat_countries_to_protein_fraction <-
-#   matrix(c(
-#     faoid_and_protein_fraction$Area.Code,
-#     faoid_and_protein_fraction$protein_fraction),
-#     ncol = 2)
-# 
-# 
-# ## create raster where fao id has been replaced with protein_fraction
-# r_protein_fraction_Meat_from_FAOtables  <- 
-#   cntry_raster %>% 
-#   classify(rcl_mat_countries_to_protein_fraction, 
-#            others = 
-#              (fbs_animals_wide_filled %>% 
-#                 filter(Area == "World", Item == "Meat") %>%
-#                 pull(protein_fraction)))# use global averages for missing countries
-# 
-# names(r_protein_fraction_Meat_from_FAOtables) <- "protein_fraction_Meat"
-# #plot(r_protein_fraction)
+## create reclassification matrix
+rcl_mat_countries_to_protein_fraction <-
+  matrix(c(
+    faoid_and_protein_fraction$Area.Code,
+    faoid_and_protein_fraction$protein_fraction),
+    ncol = 2)
+
+
+## create raster where fao id has been replaced with protein_fraction
+r_protein_fraction_Meat_from_FAOtables  <-
+  cntry_raster %>%
+  classify(rcl_mat_countries_to_protein_fraction,
+           others =
+             (fbs_animals_wide_filled %>%
+                filter(Area == "World", Item == "Meat") %>%
+                pull(protein_fraction)))# use global averages for missing countries
+
+names(r_protein_fraction_Meat_from_FAOtables) <- "protein_fraction_Meat"
+#plot(r_protein_fraction)
 ```
 
 
@@ -640,18 +673,18 @@ writeRaster(r_protein_from_AGB_kg_ha,
 
 
 # writeRaster(r_kcal_from_AGB_MM_ha,
-#              here("Data", "Intermediate_input","r_kcal_from_AGB_MM_ha.tif"),
-#             overwrite = T)
+#               here("Data", "Intermediate_input","r_kcal_from_AGB_MM_ha.tif"),
+#              overwrite = T)
+# 
+#  writeRaster(r_kcal_from_AGB_MM_perpix,
+#               here("Data", "Intermediate_input","r_kcal_from_AGB_MM_perpix.tif"),
+#              overwrite = T)
 
-# writeRaster(r_kcal_from_AGB_MM_perpix,
-#              here("Data", "Intermediate_input","r_kcal_from_AGB_MM_perpix.tif"),
-#             overwrite = T)
 
 
-
-writeRaster(r_protein_from_AGB_kg_perpix,
-             here("Data", "Intermediate_input","r_protein_from_AGB_kg_perpix.tif"),
-            overwrite = T)
+ writeRaster(r_protein_from_AGB_kg_perpix,
+              here("Data", "Intermediate_input","r_protein_from_AGB_kg_perpix.tif"),
+             overwrite = T)
 
 
 

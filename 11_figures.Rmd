@@ -13,6 +13,8 @@ output: html_document
 
 # Color palettes for plotting
 
+Missing fig4 palettes -- edit this anyway
+
 ```{r}
 #    scico_palette_show()
 pal_npp <- scico(n = 5,begin = 0.6, end = 1, palette = "corkO")
@@ -25,301 +27,599 @@ pal_protein_lajolla <- scico(n = 6, palette = "lajolla", begin = 0.15, end = 1, 
 
 pal_share_nuuk <- scico(n = 7, palette = "nuuk",  direction = -1) 
 pal_fcr <- scico(n = 6, palette = "tokyo", direction = -1)
-pal_lur <- scico(n =4, palette = "imola", direction = -1) 
+pal_fcr <-c("#C6DBEF", "#6BAED6", "#4292C6", "#2171B5", "#08519C", "#08306B") # maybe more clear
+
 pal_cv <-  scico(n = 6, palette = "nuuk", direction = -1)
 
 # test
-pal_protein_test <- 
-  c("#66c2a5", "#a6d854", "#fee08b", "#fdae61", "#f46d43", "#d53e4f")
+# pal_protein_test <- 
+#   c("#66c2a5", "#a6d854", "#fee08b", "#fdae61", "#f46d43", "#d53e4f")
 pal_share <-  
-  scico(n = 6, palette = "roma", begin = 0.1, end = 0.9, direction = -1) 
+  scico(n = 6, palette = "roma", begin = 0.15, end = 0.85, direction = -1) 
+pal_lur <- scico(n =5, palette = "imola", direction = -1, begin = 0.15, end = 0.99) 
+
+
+
+
+# function for plotting -- raster downsample = 0 or false
+create_index_map <- function(r_index, index_label,index_main_title,
+                             colorpal, breakvals,
+                             breaknames = NULL,
+                             color_midpoint = NULL, tocrs = NA, colorNA = NULL){
+  if (!is.na(tocrs)){
+    r_index <- project(r_index, tocrs, mask = TRUE)
+  }
+  index_map <- tm_shape(r_index,
+                        raster.downsample = FALSE) + ###### or 0 instead?
+    tm_raster(palette = colorpal, # try style = "fixed", 
+              breaks = breakvals,
+              labels = breaknames,
+              title = index_label,
+              midpoint = color_midpoint,
+              colorNA = colorNA,
+              legend.is.portrait = FALSE) + # added 9.8.22
+            #  legend.reverse = TRUE) + # deleted 9.8.22
+    tm_layout(main.title = index_main_title,
+              main.title.position = "center",
+              main.title.size = 1,
+              legend.bg.color = TRUE,
+              legend.outside = TRUE,
+              legend.title.size = 1,
+              legend.text.size = 1,
+              legend.outside.size = 0.2,
+              legend.outside.position = "bottom", # added 9,8
+              frame = FALSE)+
+    tm_shape(adm10_simple_faoadded_rob) + # was reg_rob_simple
+    tm_borders(col = NA,  lwd = 0.15)  # lwd was 0.33, col was "grey30",
+  
+  return (index_map)
+} 
+
+
+
+# Define the function to save tmap images to spesific folder
+# i = index of the layer in the list
+# !! Note that nameLayers changes too!
+f_save_pngs <- function(i, fig_folder) {
+  
+  # Create the directory if it doesn't exist
+  if (!dir.exists(here("Figures", fig_folder))) {
+    dir.create(here("Figures", fig_folder), recursive = TRUE)
+  }
+  
+  # Generate the plot and save it
+  p_fig <- layers[[i]] + tm_layout(legend.show = FALSE)
+  tmap_save(p_fig, 
+            filename = here("Figures", fig_folder, paste0('fig_', nameLayers[i], '.png')), 
+            width = 110, units = 'mm', dpi = 450)
+}
 
 ```
 
+# Fig 1 is the flowchart --> made in Miro board
 
+# Fig 2
 
-# Figure 2
-
-- AGB, FCR and protein from AGB
+- nrow = 3, ncol = 2
+- Left column: AGB yields, AGB protein, AGB energy
+- Right column: Crop yields, Crop protein, Crop energy
 
 
 ```{r}
-# AGB
-r_agb_5y_med_in_hyde_gl_kg_ha <- 
-  here("Data", "Input", "from_harddrive", 
-       "5y_medAGB_withIGPB6to10or16_in_hydeareas_kg_ha_5arcmin.tif") %>% 
+# a) AGB yield
+r_agb_2020_in_hyde_gl_kg_ha <-
+  here("Data", "Input", "from_harddrive",
+       "AGB2020_withIGPB6to10or16_in_hydeareas_kg_ha_5arcmin.tif") %>% 
   rast()
 
-# AGB
-(plt_agb_hyde_over2008_2012_kg_ha <- 
-    create_index_map(r_index = r_agb_5y_med_in_hyde_gl_kg_ha, 
+(plt_agb_hyde_in2020_kg_ha <- 
+    create_index_map(r_index = r_agb_2020_in_hyde_gl_kg_ha, 
                      tocrs = "ESRI:54030",
-                     index_main_title = "Median aboveground biomass (AGB) in Hyde areas over 2008-2012",
-                     index_label = "AGB kg/ha",
+                     index_main_title = "Median aboveground biomass (AGB) in HYDE grazing lands in 2020",
+                     index_label = "AGB kg/ha (with 42% biomass removal)",
                      colorpal = pal_agb, 
                      breakvals =  c(-Inf,100,250,1000,1500,2000, Inf),  
                      breaknames = c( "< 100", "100-250","250-1000",
-                                     "1000-1500", "1500-2000", "> 2000")) )  # !!!!!!!!!!!!!!! ADD explanation to caption that PUF included here!
+                                     "1000-1500", "1500-2000", "> 2000")) ) 
 
 
 
-
-
-# FCR
-(plt_fcrs <- 
-    create_index_map(r_index =  r_fcr, # or mask to the study area?
-                     tocrs = "ESRI:54030",
-                     index_main_title = "Grass-feed based feed conversion ratios (FCR)",
-                     index_label = "[kg AGB / kg protein]",
-                     colorpal = pal_fcr,
-                     breakvals = c(-Inf,100,200, 300,400,500,Inf),
-                     breaknames = c("<100","100-200","200-300","300-400","400-500", ">500"))) 
-
-
-
-
-
-
-
-
-# ------------------------------------------------------------------- protein
-(plt_animalprotein_hydeareas <- 
-    create_index_map(r_index = r_protein_from_AGB_kg_ha, 
-                     tocrs = "ESRI:54030",
-                     index_main_title = "Animal protein production from aboveground biomass (AGB)",
-                     index_label = "[kg/ha]",
-                     colorpal = pal_protein_lajolla,
-                     breakvals = c(0, 1, 5, 10, 25, 50, Inf),
-                     breaknames = c("<1","1-5", "5-10",
-                                  "10-25","25-50",  ">50"))) 
-
-
-
-
-
-plts_fig2_AGB_FCR_protein_ <- tmap_arrange(
-  plt_agb_hyde_over2008_2012_kg_ha,
-  plt_fcrs,
-  plt_animalprotein_hydeareas,
-  ncol = 3
-)
-
-plts_fig2_AGB_FCR_protein_ # modify more in illustrator
-
-tmap_save(plts_fig2_AGB_FCR_protein_, filename = 
-            here("Figures", "Figure 2 AGB, FCR and protein from AGB.pdf")) 
-
-```
-
-
-
-
-
-
-
-# Figure 3
-
-- Crops - production, protein and suitabilities
-
-```{r}
-
+# b) crop yield
 # Total production of 27 crops
 (plt_total_production_crops <-
     create_index_map(r_index = r_global_production_crops_sum_kg_ha, 
                    tocrs = "ESRI:54030",
-                   index_main_title = "Combined crop yields of SPAM food crops in 2010",
+                   index_main_title = "Combined crop yields of SPAM food crops in 2020",
                    index_label = "[kg/ha]",
                    colorpal = pal_agb,
                    breakvals = c(0,2000,4000,6000, 8000, Inf),
-                   breaknames = c("0-2000","2000-4000",
+                   breaknames = c("< 2000","2000-4000",
                                   "4000-6000","6000-8000",  ">8000"))) 
-#summary(r_global_prod_crops_sum_mt) # median 1400 mean 5700 3rd = 5900
 
 
+# c) AGB protein
+(plt_animalprotein_hydeareas <- 
+    create_index_map(r_index = r_protein_from_AGB_kg_ha, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Estimated protein production from AGB in 2020",
+                     index_label = "[kg/ha]",
+                     colorpal = pal_protein_lajolla,
+                     breakvals = c(0, 1, 5, 10, 25, 50, Inf),
+                     breaknames = c("< 1","1-5", "5-10",
+                                  "10-25","25-50",  ">50"))) 
 
-# Protein, sum of 27 crops
-quantile(values(r_prot_allcrops_sum_kg_ha), probs = c(seq(0,1, by = 0.1666667)), na.rm =T)
 
+# d) Crop protein
+# sum of 27 crops
+# quantile(values(r_prot_allcrops_sum_kg_ha), probs = c(seq(0,1, by = 0.1666667)), na.rm =T)
 (plt_crop_protein <- 
   create_index_map(r_index = r_prot_allcrops_sum_kg_ha, 
                    tocrs = "ESRI:54030",
-                   index_main_title = "Protein production of SPAM food crops in 2010",
+                   index_main_title = "Protein production of crops in 2020",
                    index_label = "[kg/ha]",
                    colorpal = pal_protein_lajolla,
                    breakvals = c(0, 10, 50, 100, 250, 500, Inf),
-                   breaknames = c("0-10","10-50", "50-100",
+                   breaknames = c("< 10","10-50", "50-100",
                                   "100-250","250-500",  ">500"))) 
 
 
+# e) AGB energy
+(plt_animal_kcal_hydeareas <- 
+    create_index_map(r_index = r_kcal_from_AGB_MM_ha, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Estimated energy production from AGB in 2020",
+                     index_label = "[million kcal/ha]",
+                     colorpal = pal_protein_lajolla,
+                     breakvals = c(0, 0.02, 0.05, 0.1, 1, 5, Inf),
+                     breaknames = c("<0.02","0.02-0.05",
+                                  "0.05-0.1","0.1-1", "1-5", ">5"))) 
 
 
+# f) Crop energy
+(plt_crop_kcal <- 
+    create_index_map(r_index = r_kcal_allcrops_sum_MM_ha, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Energy production of crops in 2020",
+                     index_label = "[million kcal/ha]",
+                     colorpal = pal_protein_lajolla,
+                     breakvals = c(0, 0.2, 0.5, 1, 10, 50, Inf),
+                     breaknames = c("<0.2","0.2-0.5",
+                                  "0.5-1","1-10", "10-50", ">50"))) 
 
 
-
-
-
-
-
-# SI, crops --- more about SI classes: https://www.nature.com/articles/s41597-022-01632-8
-  # plot with 30 arcsec instead? Maybe not as everything else is in 5arcmin reso
-SI_5arcmin <- 
-  here("Data", "Input", "Zabel22_SI",
-       "SI_5arcmin_overall_suitability_subset1to17_hist1980_2009_current_irr_areas_applied.tif") %>% 
-  rast()
-
-#
-SI_5arcmin_0_toNA <- classify(SI_5arcmin, cbind(0, NA)) # because we dont want to plot no-suitable land
-
-# pal_SI <- scico(n =3, palette = "bam", begin = 0.6)
-# pal_SI <- scico(n =11, palette = "bam")
-# pal_SI <- pal_SI[c(3,7,11)] # this to get light red, light and dark green values
-
-(plt_SI_v3.0 <- create_index_map(r_index = SI_5arcmin_0_toNA, tocrs = "ESRI:54030",
-                     index_main_title = "Overall suitability indices (SI) for food crops over 1980-2009",
-                     index_label = "",
-                     colorpal = pal_agb,
-                     breakvals =  c(1, 33, 75, Inf),
-                     breaknames = c("Marginally suitable (1 < SI < 33 )", 
-                                    "Moderately suitable (33 <= SI <= 75 )", "Highly suitable (SI > 75)")) )
-
-
-
-
-
-
-
-
-
-# ------------------------------------------------------------- arrange and save
-plts_crops <- tmap_arrange(
-  plt_total_production_crops, #  is this relevant?
+plts_fig2 <- tmap_arrange(
+  plt_agb_hyde_in2020_kg_ha,
+  plt_total_production_crops,
+  plt_animalprotein_hydeareas,
   plt_crop_protein,
-#  plt_crop_kcal,
-  plt_SI_v3.0
+  plt_animal_kcal_hydeareas,
+  plt_crop_kcal,
+  ncol = 2
 )
 
-plts_crops
+plts_fig2 # modify more in illustrator
 
-tmap_save(plts_crops, 
-          here("Figures", "Figure 3 crop production protein and SI.pdf")) 
+tmap_save(plts_fig2, filename =
+            here("Figures", "Fig 2.pdf"))
 
+tmap_save(plts_fig2, filename =
+            here("Figures", "Fig 2.png"))
 ```
 
 
 
-# Figure 4
 
-- total combined protein
-- shares of total protein
-- LUR
+# Fig 3
 
-Masked to 'mixed' areas (areas where both grazing land and cropland comprises 10% or over of agricultural land area in a cell)
-
-Those maps could also be masked to areas where there is cropland and in agricultural land with 1 < SI < 10
-
-
-!! should also total protein be presented? It is interesting that production from marginal lands is just 4.3 / 11.1 = 39%
-
+- nrow = 3, ncol = 2
+- total combined protein, total combined energy
+- shares of total protein, shares of total energy
+- LUR protein, LUR energy
 
 ```{r}
-
-
-
-
-# prepare dataset for plotting. Easier to stack the rasters and plot then. Modify names in illustrator
-r_combined_protein_plots <- c(
-  r_protein_combined_kg_ha,
-  r_protein_combined_kg_ha_wheremixed,
-  r_protein_combined_kg_ha_SIbetween1to10mask)
-  
-
-names(r_combined_protein_plots) <- 
-  c("prot_kgha", "prot_kgha_whereMixed", "prot_kgha_SI1to10")
-
-
-r_shares_plot <- c(
-  r_share_of_total_protein_livestock,
-  r_share_of_total_protein_livestock_mixed,
-  r_share_of_total_protein_livestock_SIbetween1to10mask #,
-  # r_share_of_total_energy_livestock,
-  # r_share_of_total_energy_livestock_croplandmask,
-  # r_share_of_total_energy_livestock_SIbelow10mask_croplandmask
-  )
-
-names(r_shares_plot) <- 
-  c("liv_shre_tot_prot", 
-    "liv_shre_tot_prot_wheremixed",
-    "liv_shre_tot_prot_SI1to10mask")
-# ,
-#   "liv_shre_tot_kcal", "liv_shre_tot_kcal_clmask", "liv_shre_tot_kcal_SI10clmasl")
-
-
-# LUR
-# combine LUR rasters
-r_LUR_prediced_combined <- LUR_predicted_nlyr3
-names(r_LUR_prediced_combined) <-   
-  c("LUR", "LUR_wheremixed", "LUR_SI1to10_mask")
-
-
-
-
-# --------------------------------------------------------------- plot
-(plts_combined_protein <- 
-  create_index_map(r_index = r_combined_protein_plots, 
+# a) total combined protein
+(plt_combined_protein <- 
+  create_index_map(r_index = r_protein_combined_kg_ha, 
                    tocrs = "ESRI:54030",
-                   index_main_title = "",
-                   index_label = "[kg/ha]",
+                   index_main_title = "", #Total protein production from grazing livestock and crops in 2020 [kg/ha]
+                   index_label = "",
                    colorpal = pal_protein_lajolla, 
                    colorNA = "NA",
                    breakvals = c(0, 10, 50, 100, 250, 500, Inf),
-                   breaknames = c("0-10","10-50", "50-100",
+                   breaknames = c("<10","10-50", "50-100",
                                   "100-250","250-500",  ">500"))) 
   
 
-(plts_shares<-  
-    create_index_map(r_index = r_shares_plot, 
+# b) total combined energy
+(plt_combined_energy <-
+  create_index_map(r_index = r_energy_combined_MM_ha, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "", # Total energy production from grazing livestock and crops in 2020 [million kcal/ha]
+                   index_label = "",
+                   colorpal = pal_protein_lajolla,
+                   breakvals = c(0, 0.2, 0.5, 1, 10, 50, Inf),
+                   breaknames = c("<0.2","0.2-0.5",
+                                  "0.5-1","1-10", "10-50", ">50")))
+  
+
+
+# c) shares of total protein
+# "#2574B5" "#46ADCC" "#9CE2D5" "#D1DE99" "#BE9E3F" "#A2621C"
+(plt_share_of_total_protein_livestock <- 
+  create_index_map(r_index = r_share_of_total_protein_livestock, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "", #Grazing livestock's share of combined protein production [%]
+                   index_label = "",
+                   colorpal = pal_share,
+                   colorNA = "NA",
+                   breakvals = c(0, 10, 25, 50, 75, 90, 100),
+                   breaknames = c("<10","10-25", "25-50",
+                                  "50-75","75-90",  ">90")))
+
+# d) shares of total energy
+(plts_r_share_of_total_energy_livestock<-  
+    create_index_map(r_index = r_share_of_total_energy_livestock, 
                      tocrs = "ESRI:54030",
-                     index_main_title = "",
-                     index_label = "[%]",
+                     index_main_title = "", # Grazing livestock's share of combined energy production [%]
+                     index_label = "",
                      colorpal = pal_share,
                      colorNA = "NA",
                      breakvals = c(0, 10, 25, 50, 75, 90, 100),
                      breaknames = c("<10", "10-25", "25-50","50-75","75-90", "90-100"))) 
-  
 
 
-# add LUR
-(plt_LUR_predicted <- # works when LUR layers have different names
-  create_index_map(r_index = r_LUR_prediced_combined, 
+# e) LUR protein
+#   "#F9FD66" "#98CB6D" "#63957A" "#3C6E90" "#274DA5"
+(plt_LUR_protein <-
+  create_index_map(r_index = r_LUR_protein, 
                    tocrs = "ESRI:54030",
-                   index_main_title = "",
-                   index_label = "[LUR]",
+                   index_main_title = "", # Land use ratio (LUR) from protein perspective
+                   index_label = "",
                    colorpal = pal_lur,
                    colorNA = "NA",
                    breakvals = c(0, 1, 5, 10, 100,  Inf),
-                    breaknames = c("0-1","1-5", "5-10","10-100",">100"))) 
+                   breaknames = c("<1","1-5", "5-10",
+                                  "10-100",">100"))) 
 
 
-# ----------------------------------------------------------- protein outside cl
+# f) LUR energy
+(plt_LUR_energy <-
+  create_index_map(r_index = r_LUR_energy, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "", # Land use ratio (LUR) from energy perspective
+                   index_label = "",
+                   colorpal = pal_lur,
+                   colorNA = "NA",
+                   breakvals = c(0, 1, 5, 10, 100,  Inf),
+                   breaknames = c("<1","1-5", "5-10",
+                                  "10-100",">100")))
 
 
-plts_combined_prot_and_shares_and_LUR <-
+
+# Combine
+plts_fig3 <-
   tmap_arrange(
-    plts_combined_protein,
-    plts_shares,
-    plt_LUR_predicted,
-  ncol = 3
-)
-plts_combined_prot_and_shares_and_LUR
+    plt_combined_protein,
+    plt_combined_energy,
+    plt_share_of_total_protein_livestock,
+    plts_r_share_of_total_energy_livestock,
+    plt_LUR_protein,
+    plt_LUR_energy,
+    nrow = 3,
+    ncol = 2
+  )
+plts_fig3
 
-tmap_save(plts_combined_prot_and_shares_and_LUR, 
-          filename = here("Figures",
-                          "Figure 4 combined_prot_and_shares_and_LUR.pdf"))
+tmap_save(plts_fig3, filename = here("Figures","Fig 3.pdf"))
+tmap_save(plts_fig3, filename = here("Figures","Fig 3.png"))
+
+
+
+
+# ---- Link to Illustrator
+
+# Määritä kartat ja niiden nimet
+layers <- list(
+  plt_combined_protein, 
+  plt_combined_energy, 
+  plt_share_of_total_protein_livestock, 
+  plts_r_share_of_total_energy_livestock, 
+  plt_LUR_protein, 
+  plt_LUR_energy
+)
+
+nameLayers <- c(
+  "combined_protein", 
+  "combined_energy", 
+  "share_of_total_protein_livestock", 
+  "share_of_total_energy_livestock", 
+  "LUR_protein", 
+  "LUR_energy"
+)
+
+
+
+# Use the f_save_pngs function with purrr::map
+map(1:length(layers), ~f_save_pngs(.x, "Fig3"))  #
+
+
+
+
+
+
 ```
 
 
 
-# Figure 5
+
+
+# Fig 4
+
+- Protein & kcal increase in scenario All to CL
+- Protein & kcal increase in scenario All to GL
+- Combined map of these scenarios AlltoCL & AlltoGL - including 21/27 nutrients
+- Combined map, including nutrients balance and allocated outside conservation areas
+
+```{r}
+breaknames_updated <- c("< 2 (no potential)", 
+                        "2-5", 
+                        "5-10", 
+                        "> 10") 
+
+#scico(3, palette = "bilbao", begin = 0.2, end = 0.7, direction = -1)
+pal_AlltoGL <- c("#DADADA", "#B9AE81", "#A5785C", "#8D3F46") # More GL = red
+
+#pal_AlltoCL <- c("#e0e0e0", "#9CE2D5", "#6DCBD6", "#3B567A")
+#pal_AlltoCL_AlltoGL <- c("#e0e0e0", "#9CE2D5",  "#cc6633",  "#6DCBD6", "#3B567A")
+
+#pal_AlltoCL <- scico(4, palette = "bilbao", begin = 0.2, end = 0.95, direction = -1) #
+
+#pal_AlltoCL <- c("#E8E8E8", "#C8B48D", "#8A6242", "#A3474B")
+pal_AlltoCL <- c("#DADADA", "#C0F8F0", "#5CB6C3", "#2F3F61")
+#scales::show_col(pal_AlltoCL)
+pal_AlltoCL_AlltoGL <- c("#DADADA", "#C0F8F0",  "#B9AE81",  "#5CB6C3", "#2F3F61")
+
+
+
+# All to CL - protein and kcals - no nutrients mask
+(plt_protein_and_kcal_AlltoCL_recoded_fixed <-
+  create_index_map(r_index = protein_and_kcal_AlltoCL_recoded_fixed,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "",
+                   index_label = "",
+                   colorpal = pal_AlltoCL,
+                   breakvals = c(-Inf, -554, 2, 778, Inf),
+                   breaknames = breaknames_updated))
+
+
+
+# All to GL - protein and kcals - no nutrients mask
+(plt_protein_and_kcal_AlltoGL_recoded_fixed <-
+  create_index_map(r_index = protein_and_kcal_AlltoGL_recoded_fixed,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "",
+                   index_label = "",
+                   colorpal = pal_AlltoGL,
+                   breakvals = c(-Inf, 6, 8, 12, Inf),
+                   breaknames = breaknames_updated))
+
+
+
+
+# Combined map of AlltoCL & AlltoGL - including 21/27 nutrients
+#unique(AlltoCL_AlltoGL_combined_nutrients_considered_recode)
+# -555 = no potential, 1 = moderate potential in AlltoCL scenario,
+# 13 = very high potential in AlltoGL, 777 = high potential in AlltoCL,
+# 10000 = very high potential in AlltoCL
+(plt_combined_AlltoCL_AlltoGL_nutrients_considered_recode <-
+  create_index_map(r_index = AlltoCL_AlltoGL_combined_nutrients_considered_recode,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "",
+                   index_label = "",
+                   colorpal = pal_AlltoCL_AlltoGL,
+                   breakvals = c(-Inf, -554, 2, 14, 778, Inf),
+                   breaknames = c("< 2 (no potential)",
+                                  "2-5, AlltoCL",
+                                  "> 2, AlltoGL",
+                                  "5-10, AlltoCL",
+                                  "> 10, AlltoCL")))
+
+
+# Combined map, nutrients, SIgte33
+(plt_combined_AlltoCL_AlltoGL_nutrients_considered_recode_SI33 <-
+  create_index_map(r_index = AlltoCL_AlltoGL_combined_nutrients_considered_recode_SI33,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "",
+                   index_label = "",
+                   colorpal = pal_AlltoCL_AlltoGL,
+                   breakvals = c(-Inf, -554, 2, 14, 778, Inf),
+                   breaknames = c("< 2 (no potential)",
+                                  "2-5, AlltoCL",
+                                  "> 2, AlltoGL",
+                                  "5-10, AlltoCL",
+                                  "> 10, AlltoCL")))
+
+
+# Further, exluding conservation areas
+(plt_AlltoCL_AlltoGL_combined_nutrients_SI33_conserv_areas <-
+  create_index_map(r_index = AlltoCL_AlltoGL_combined_nutrients_SI33_conserv_areas,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "",
+                   index_label = "",
+                   colorpal = pal_AlltoCL_AlltoGL,
+                   breakvals = c(-Inf, -554, 2, 14, 778, Inf),
+                   breaknames = c("< 2 (no potential)",
+                                  "2-5, AlltoCL",
+                                  "> 2, AlltoGL",
+                                  "5-10, AlltoCL",
+                                  "> 10, AlltoCL")))
+
+
+# Combine
+plts_fig4 <-
+  tmap_arrange(
+    plt_protein_and_kcal_AlltoCL_recoded_fixed,
+    plt_protein_and_kcal_AlltoGL_recoded_fixed,
+    plt_combined_AlltoCL_AlltoGL_nutrients_considered_recode,
+    plt_combined_AlltoCL_AlltoGL_nutrients_considered_recode_SI33,
+    plt_AlltoCL_AlltoGL_combined_nutrients_SI33_conserv_areas,
+    ncol = 2
+  )
+plts_fig4
+# Save
+tmap_save(plts_fig4, filename = here("Figures","Fig 4.pdf"))
+tmap_save(plts_fig4, filename = here("Figures","Fig 4.png"))
+
+
+# Testing! Matin koodi
+# Luo kansio Fig4 Figures-kansion sisään, jos sitä ei ole olemassa
+# if (!dir.exists(here("Figures", "Fig4"))) {
+#   dir.create(here("Figures", "Fig4"))
+# }
+
+# Määritä kartat ja niiden nimet
+layers <- list(
+  plt_protein_and_kcal_AlltoCL_recoded_fixed, 
+  plt_protein_and_kcal_AlltoGL_recoded_fixed, 
+  plt_combined_AlltoCL_AlltoGL_nutrients_considered_recode, 
+  plt_combined_AlltoCL_AlltoGL_nutrients_considered_recode_SI33,
+  plt_AlltoCL_AlltoGL_combined_nutrients_SI33_conserv_areas
+)
+
+nameLayers <- c(
+  'protein_and_kcal_AlltoCL', 
+  'protein_and_kcal_AlltoGL', 
+  'combined_nutrients', 
+  'combined_nutrients_SIgte33',
+  'combined_nutrients_SIgte33_conserv_areas'
+)
+
+# # Luo ja tallenna kuvat käyttäen for-silmukkaa
+# for (i in 1:length(layers)) {
+#   p_fig <- layers[[i]] + tm_layout(legend.show = FALSE)
+#   tmap_save(p_fig, filename = here("Figures", "Fig4", paste0('fig_', nameLayers[i], '.png')), width = 110, units = 'mm', dpi = 450)
+# }
+
+
+map(1:length(layers), ~f_save_pngs(.x, "Fig4")) 
+
+```
+
+
+
+# Reality check maps (priority conservation areas)  --- AND gl, cl, mosaic
+
+```{r}
+# priority conservation areas
+r_areas_where_conversion_not_realistic_combined_glmask_5arcmin <-
+  rast(here("Data", "Intermediate_input",
+              "areas_where_conversion_not_realistic_glmask_5arcmin.tif"))
+
+
+
+r_areas_where_conversion_not_realistic_combined_glmask_5arcmin_NAto0 <- 
+  ifel(is.na(r_areas_where_conversion_not_realistic_combined_glmask_5arcmin), 
+       0,
+       r_areas_where_conversion_not_realistic_combined_glmask_5arcmin) |> 
+  mask(r_fraction_gl_cl_total_0toNA)
+
+
+(plt_priority_conservation_areas <- 
+  create_index_map(r_index = r_areas_where_conversion_not_realistic_combined_glmask_5arcmin_NAto0, 
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Conservation priority regions",
+                   index_label = "",
+                   colorpal = c("#696969", "#FF9933"), 
+                   breakvals =  c(-Inf, 0.1, Inf ), 
+                   breaknames = c("Other areas", "Priority area"))
+)
+
+tmap_save(plt_priority_conservation_areas,
+          here("Figures", "Fig priority conservation areas.pdf"))
+
+
+
+
+
+# ------------------------------------------------------- shares of gl cl mosaic
+threshold_gl_or_cl_shareover <- 80
+threshold_mosaic_share_gte <- 20
+
+# Grazing land osuus maatalousmaasta
+r_gl_share_of_agrland <-  100 * r_fraction_gl_NAto0 / r_fraction_gl_cl_total_0toNA 
+r_gl_share_of_agrland_over_threshold <- ifel(r_gl_share_of_agrland <= threshold_gl_or_cl_shareover, NA, r_gl_share_of_agrland)
+
+# Croplandin osuus maatalousmaasta
+r_cl_share_of_agrland <-  100 * r_fraction_cl_NAto0 / r_fraction_gl_cl_total_0toNA 
+r_cl_share_of_agrland_over_threshold <- ifel(r_cl_share_of_agrland <= threshold_gl_or_cl_shareover, NA, r_cl_share_of_agrland)
+
+# mosaic: threshold_mosaic_share_gte% tai enemmän maatalousmaasta molempia
+r_gl_mask_over_threshold_mosaic <- ifel(r_gl_share_of_agrland >= threshold_mosaic_share_gte, 1, NA)
+r_cl_mask_over_threshold_mosaic <- ifel(r_cl_share_of_agrland >= threshold_mosaic_share_gte, 1, NA)
+
+# Yhdistä maskit
+r_mosaic_mask <- r_gl_mask_over_threshold_mosaic * r_cl_mask_over_threshold_mosaic
+
+# Määritä mosaic-alueet
+r_gl_cl_share_mosaic <- ifel(r_mosaic_mask == 1, 1, NA)
+
+plot(r_gl_share_of_agrland_over_threshold, main = paste("Grazing land share of agr land >", threshold_gl_or_cl_shareover, "%"))
+plot(r_gl_cl_share_mosaic, main = paste("mosaic system: At least", threshold_mosaic_share_gte, "% both gl and cl"))
+plot(r_cl_share_of_agrland_over_threshold, main = paste("Cropland share of agr land >", threshold_gl_or_cl_shareover, "%"))
+
+# give new names
+r_gl_share_of_agrland_over80 <- r_gl_share_of_agrland_over_threshold
+r_cl_share_of_agrland_over80 <- r_cl_share_of_agrland_over_threshold
+
+
+
+# Grazing land osuus maatalousmaasta (over 80%)
+(plt_gl_share_of_agrland_over80 <- 
+  create_index_map(r_index = r_gl_share_of_agrland_over80,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Grazing land share of agricultural land >80%",
+                   index_label = "",
+                   colorpal = "#A6CEE3",
+                   breakvals = c(-Inf, threshold_gl_or_cl_shareover, Inf),
+                   breaknames = c("", "")) )
+
+# Cropland osuus maatalousmaasta (over 80%)
+(plt_cl_share_of_agrland_over80 <- 
+  create_index_map(r_index = r_cl_share_of_agrland_over80,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Cropland share of agricultural land >80%",
+                   index_label = "",
+                   colorpal = "#C0A2C7",
+                   breakvals = c(-Inf, threshold_gl_or_cl_shareover, Inf),
+                   breaknames = c("", "")) )
+
+# Mosaic areas (both grazing and cropland over threshold_mosaic_share_gte%)
+(plt_gl_cl_share_mosaic <- 
+  create_index_map(r_index = r_gl_cl_share_mosaic,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Mosaic system: at least 20% both production systems",
+                   index_label = "",
+                   colorpal = "#1F78B4",
+                   breakvals = c(-Inf, 0.5, Inf),
+                   breaknames = c("", "")) )
+
+
+
+plt_land_use_categories <- 
+  tmap_arrange(plt_gl_share_of_agrland_over80, 
+               plt_cl_share_of_agrland_over80, 
+               plt_gl_cl_share_mosaic,
+               ncol = 1
+               )
+
+tmap_save(plt_land_use_categories,
+          here("Figures", "Fig land use categories.pdf"))
+```
+
+
+
+
+# OLD Fig 4 Line graph --> MOVE TO SUPPLEMENTARY
 
 Plot line graph with ggplot and add LUR here
 
@@ -332,9 +632,9 @@ df_SI_positive <-
 df_rounded <- round(df_SI_positive, 1) %>% 
   dplyr::select(-Protein_from_AGB_decrease_mmt)
 
-#add median LUR value here
-df_LUR_SI_based_NAto0_noXY_medians_positive <-
-  read.csv(here("Data", "Output", "LUR_medians_different_SI_thresholds.csv"))
+#add median LUR value here --> not needed
+# df_LUR_SI_based_NAto0_noXY_medians_positive <-
+#   read.csv(here("Data", "Output", "LUR_medians_different_SI_thresholds.csv"))
 
 df_rounded <-
   left_join(df_rounded,
@@ -342,11 +642,11 @@ df_rounded <-
             by = c("SI_class" = "SI"))
 
   
-
+# Revision: change names from current to existing
 df_rounded <- df_rounded %>% 
-  rename("Current grazingland area" = "Current_grazingland_area_total_Mha",
-         "Current cropland area" = "Current_cropland_area_total_Mha",
-         "Current agricultural area" = "Current_agricultural_total_area_Mha",
+  rename("Existing grazingland area" = "Current_grazingland_area_total_Mha",
+         "Existing cropland area" = "Current_cropland_area_total_Mha",
+         "Existing agricultural area" = "Current_agricultural_total_area_Mha",
          "SI based unrestricted cropland" = "SI_based_unrestricted_cropland_Mha",
          "SI based restricted cropland" = "SI_based_restricted_max_cropland_Mha",
          "Potential cropland expansion" = "potential_cropland_expansion_Mha",
@@ -361,8 +661,8 @@ df_rounded <- df_rounded %>%
 
 # Select columns
 Mha_columns <- 
-  c("Current grazingland area", 
-    "Current cropland area", 
+  c("Existing grazingland area", 
+    "Existing cropland area", 
    # "Current agricultural area",
   #  "SI based unrestricted cropland", 
     "SI based restricted cropland",
@@ -398,138 +698,255 @@ df_SI_long_LUR <- df_rounded %>%
 
 
 # Plot
-plt_hectares_line <- 
-  ggplot(df_SI_long_Mha %>% filter(SI_class > 0), 
-         aes(x = SI_class, y = Value, color = Variable, 
-             linetype = ifelse(Variable == "Current grazingland area", 
-                               "dotted", 
-                               ifelse(Variable %in% c("Current cropland area", "Current agricultural area"),
-                                      "dashed", "solid")))) +
+
+# Common theme settings
+library(cowplot)
+common_theme <- theme_classic() +
+  theme(text = element_text(size = 7),
+        legend.position = "bottom",
+        legend.box = "vertical",
+        legend.justification = "left",
+        legend.direction = "horizontal",
+        legend.key.width = unit(1.5, "cm"),
+        panel.spacing = unit(2, "lines"))
+
+
+
+# Plot hectares line
+plt_hectares_line <- ggplot(df_SI_long_Mha %>% filter(SI_class > 0), 
+                            aes(x = SI_class, y = Value, color = Variable, 
+                                linetype = ifelse(Variable == "Existing grazingland area", 
+                                                  "dotted", 
+                                                  ifelse(Variable %in% c("Existing cropland area", "Existing agricultural area"),
+                                                         "dashed", "solid")))) +
   geom_line(linewidth = 0.7) +
   scale_x_continuous(breaks = seq(0, 100, 5), name = "SI class") +
   scale_y_continuous(name = "Area, million hectares") +
   labs(title = "",
-       subtitle = "Agricultural land available for crop production based on SI thresholds") +
+       subtitle = "Agricultural land available for crop production based on suitability index (SI) thresholds") +
   scale_color_viridis_d() +
   scale_linetype_manual(values = c("dashed","dotted", "solid")) +
   guides(color = guide_legend(title = ""),
-         linetype = guide_legend(title = "")) +  # Updating legend titles
-  theme_classic() +
-  theme(text = element_text(size = 8),
-        legend.position = "bottom",
-        panel.spacing = unit(2, "lines"))
-
-plt_hectares_line
+         linetype = guide_legend(title = "")) +  
+  common_theme
 
 
-# Protein
-plt_protein_line <- 
-  ggplot(df_SI_long_protein %>% filter(SI_class > 0), 
-         aes(x = SI_class, y = Value, color = Variable, 
-             linetype = ifelse(Variable %in% c("Original protein from AGB", "Original crop protein production"),
-                               "dashed", "solid"))) +
+
+# Plot protein line
+plt_protein_line <- ggplot(df_SI_long_protein %>% filter(SI_class > 0), 
+                           aes(x = SI_class, y = Value, color = Variable, 
+                               linetype = ifelse(Variable %in% c("Original protein from AGB", "Original crop protein production"),
+                                                 "dashed", "solid"))) +
   geom_line(linewidth = 0.7) +
   scale_x_continuous(breaks = seq(0, 100, 5), name = "SI class") +
   scale_y_continuous(name = "Protein, million metric tons (mmt)") +
   labs(title = "",
        subtitle = "Total protein production based on SI thresholds") +
   scale_color_viridis_d(option ="inferno", begin = 0.3, direction = -1) +
-  #scale_color_scico_d(palette = "lajolla", begind = 0, end = 0.8) +
-  #scale_color_manual(values = my_palette) +
   scale_linetype_manual(values = c("dashed", "solid")) +
   guides(color = guide_legend(title = ""),
          linetype = guide_legend(title = ""))+
-  theme_classic() +
-  theme(text = element_text(size = 8),
-        legend.position = "bottom",
-        panel.spacing = unit(2, "lines"))
-
-plt_protein_line
+  common_theme
 
 
+# LUR -- not needed here
+# plt_LUR_line <- 
+#   ggplot(df_SI_long_LUR %>% filter(SI_class > 0), 
+#          aes(x = SI_class, y = Value, color = Variable)) +
+#   geom_line(linewidth = 0.7) +
+#   scale_x_continuous(breaks = seq(0, 100, 5), name = "SI class") +
+#   scale_y_continuous(name = "Median LUR") +
+#   labs(title = "",
+#        subtitle = "") +
+#   scale_color_scico_d(palette = "imola") +
+#   theme_classic() +
+#   theme(text = element_text(size = 8),
+#         legend.position = "bottom",
+#         panel.spacing = unit(2, "lines"))
+# 
+# plt_LUR_line
 
-# LUR
-plt_LUR_line <- 
-  ggplot(df_SI_long_LUR %>% filter(SI_class > 0), 
-         aes(x = SI_class, y = Value, color = Variable)) +
-  geom_line(linewidth = 0.7) +
-  scale_x_continuous(breaks = seq(0, 100, 5), name = "SI class") +
-  scale_y_continuous(name = "Median LUR") +
-  labs(title = "",
-       subtitle = "") +
-  scale_color_scico_d(palette = "imola") +
-  theme_classic() +
-  theme(text = element_text(size = 8),
-        legend.position = "bottom",
-        panel.spacing = unit(2, "lines"))
 
-plt_LUR_line
-
-# Combine the two updated plots
-plt_combined <- 
-  grid.arrange(plt_hectares_line,
-               plt_protein_line,
-               plt_LUR_line,
-               ncol = 2)
+# Combine plots using cowplot
+plt_combined <- plot_grid(plt_hectares_line, plt_protein_line, ncol = 2, align = "v")
 plt_combined
 
+# Save combined plot
+ggsave(filename = here("Figures", "Figure 4 a b Linegraph.pdf"), 
+       plot = plt_combined, 
+       width = 12, height = 6, units = "in", 
+       dpi = 300)
 
-# ggsave(plt_hectares_line, filename = here("Figures", "Figure 5Linegraph_potential_cl_area_hectares.pdf"))
-# ggsave(plt_protein_line, filename = here("Figures", "Linegraph_potential_protein_production.pdf"))
-ggsave(plt_combined, 
-       filename = here("Figures", "Figure 5 Linegraph_combined_100SIrasters.pdf"))
+# ggsave(plt_hectares_line, filename = here("Figures", "Fig 4a Linegraph_potential_cl_area_hectares.pdf"))
+# ggsave(plt_protein_line, filename = here("Figures", "Fig 4b Linegraph_potential_protein_production.pdf"))
+
 
 
 ```
 
-# Figure 5 continuation
+# OLD Fig 4 (line graph polot) continuation --> MOVE TO SUPPLEMENTARY
 
 - Plot SI based land use changes / comparisons II
 
-- cropland expansion 1, 33, 75
+- cropland expansion 33 and 75
+
+!! Skaalan pitäisi olla > 100% saakka ja sitten uusi luokka tapauksille joissa cl expansion osuu alueille joilla ei ole aiemmin ollut croplandia. Tämän luokan nimi voisi olla "new cropland area" 
 
 ```{r}
-#  ----------------------------  cropland expansion 1, 33, 75
-r_cropland_expansion_percent_lyr_SI_1_33_75 <- 
-  subset(r_cropland_expansion_percent_positive, 
-         c("MaxFracOfCell_ge1", "MaxFracOfCell_ge33", "MaxFracOfCell_ge75"))
-names(r_cropland_expansion_percent_lyr_SI_1_33_75) <-
-  c("Cropland expansion when SI threshold ≥ 1", 
-    "Cropland expansion when SI threshold ≥ 33",
+#  ----------------------------  cropland expansion 33, 75
+r_cropland_expansion_percent_lyr_SI_33_75 <- 
+  subset(r_cropland_expansion_percent_positive_Inf_handled, # note -999 values that were Inf before!
+         c("MaxFracOfCell_ge33", "MaxFracOfCell_ge75"))
+
+names(r_cropland_expansion_percent_lyr_SI_33_75) <-
+  c("Cropland expansion when SI threshold ≥ 33",
     "Cropland expansion when SI threshold ≥ 75")
 
-# do this to get rid of white value that coours when SI is too high
-r_cropland_expansion_percent_lyr_SI_1_33_75_NAto0 <-
-  classify(r_cropland_expansion_percent_lyr_SI_1_33_75, 
+# do this to get rid of white value that occurs when SI is too high (not sure if needed anymore..)
+r_cropland_expansion_percent_lyr_SI_33_75_NAto0 <-
+  classify(r_cropland_expansion_percent_lyr_SI_33_75, 
            cbind(NA,0))
 
-r_cropland_expansion_percent_lyr_SI_1_33_75_NAto0_agrlandmask <-
-  mask(r_cropland_expansion_percent_lyr_SI_1_33_75_NAto0,
+  
+r_cropland_expansion_percent_lyr_SI_33_75_NAto0_agrlandmask <-
+  mask(r_cropland_expansion_percent_lyr_SI_33_75_NAto0,
        r_fraction_gl_cl_total_0toNA)
 
 
+pal_cl_expansion <- 
+  scico(10, palette = "imola", direction = -1)
 
-pal_cl_expansion <- scico(n = 8, palette = "nuuk",  direction = -1) # try different palette?
+# make palette out of these
+pal_cl_expansion <- 
+  c("#1933B2",
+    "#FFFF66", "#C2E966", "#97CA6C", "#7AAD73", "#5F917A")
 
+# pal_cl_expansion <- 
+#   scico(10, palette = "nuuk", direction = -1)
+# pal_cl_expansion <- 
+#   c("#05598C", "#FEFEB2", "#C6C684", "#B9B88C", "#AAAC95", "#929C96")
 
-(plt_r_cropland_expansion_percent_lyr_SI_1_33_75 <-
-  create_index_map(r_index = r_cropland_expansion_percent_lyr_SI_1_33_75_NAto0_agrlandmask, 
+(plt_r_cropland_expansion_percent_lyr_SI_33_75 <-
+  create_index_map(r_index = r_cropland_expansion_percent_lyr_SI_33_75_NAto0_agrlandmask, 
                    tocrs = "ESRI:54030",
                    index_main_title = "Cropland expansion potential based on suitability restrictions", 
                    index_label = "[%]",
                    colorpal = pal_cl_expansion,
+                     # c("#C0A2C7", "#FEFEB2", "#ADAE94", "#8D9996", "#5E7C88", "#326682", "#05598C"),
                    colorNA = "NA",
-                   breakvals = c(0, 10, 25, 50, 75, 100, 150, 200, Inf),
-                   breaknames = c("0 to 10", "10 to 25", "25 to 50", "50 to 75", "75 to 100", "100 to 150", "150 to 200", "> 200")))
+                   breakvals = c(-999 ,0, 10, 50,  100, 200, Inf),
+                   breaknames = c("New cropland", "0 to 10", "10 to 50", "50 to 100", "100 to 200", "> 200")))
 
-tmap_save(plt_r_cropland_expansion_percent_lyr_SI_1_33_75,
-          here("Figures", "Figure 5 expansion maps.pdf"))
+tmap_save(plt_r_cropland_expansion_percent_lyr_SI_33_75,
+          here("Figures", "Fig 4 cd expansion maps.pdf"))
+
+tmap_save(plt_r_cropland_expansion_percent_lyr_SI_33_75,
+          here("Figures", "Fig 4 cd expansion maps.png"))
+
+
+
+
 
 
 ```
 
+# OLD Fig 5 The final map --> replaced with different maps
 
-# ------------------------------------------- not needed
+Plotted in script 10 but moved also here
+
+```{r}
+# 25decrease to 1000% increase here:
+r_protein_change_currenTO_ALLtoCL_recoded <- 
+  here("Data", "Intermediate_input",
+       "r_protein_change_currenTO_ALLtoCL_recoded_m25to1000.tif") |> 
+  rast()
+
+# Plot
+breaknames_updated <- c("Grazing remains (29%)", 
+                        "Cropland remains (14%)", 
+                        "Mosaic remains (17%)", 
+                        "Beneficial shifts (28%)", 
+                        "Adverse shifts (12%)") #Cropland to Grazing? we dont know for sure
+
+
+
+pal_categories <- 
+  c("#A6CEE3", "#C0A2C7", "#1F78B4", "#B2DF8A", "#FFA500")#
+
+(plt_r_protein_change_currenTO_ALLtoCL_recoded <-
+create_index_map(r_index = r_protein_change_currenTO_ALLtoCL_recoded,
+                 tocrs = "ESRI:54030",
+                 index_main_title = "Comparing protein outputs: existing land use vs 'all suitable to cropland'",
+                 index_label = "Direction of change: if protein shift [-25, 1000]%, unchanged land use",
+                 colorpal = pal_categories,
+                
+                 breakvals = c(-Inf, -9000, -7000, -500, 10, Inf),
+                 breaknames = breaknames_updated))
+
+
+
+
+
+# ------------------------------------------------------- outside priority conservation areas
+# priority conservation areas
+r_areas_where_conversion_not_realistic_combined_glmask_5arcmin <-
+  rast(here("Data", "Intermediate_input",
+              "areas_where_conversion_not_realistic_glmask_5arcmin.tif"))
+
+
+r_protein_change_currenTO_ALLtoCL_recoded_outside_conservation_areas <-
+  mask(r_protein_change_currenTO_ALLtoCL_recoded,
+       r_areas_where_conversion_not_realistic_combined_glmask_5arcmin,
+       inverse = T)
+
+
+
+breaknames_updated <- c("Grazing remains (11%)", 
+                        "Cropland remains (29%)", 
+                        "Mosaic remains (26%)", 
+                        "Beneficial shifts (25%)", 
+                        "Adverse shifts (9%)") #Cropland to Grazing? we dont know for sure
+
+
+(plt_r_protein_change_currenTO_ALLtoCL_recoded_outside_conservation_areas <-
+create_index_map(r_index = r_protein_change_currenTO_ALLtoCL_recoded_outside_conservation_areas,
+                 tocrs = "ESRI:54030",
+                 index_main_title = "Comparing protein outputs: existing land use vs. 'all suitable to cropland' outside priority conservation areas",
+                 index_label = "Direction of change: if protein shift [-25, 1000]%, unchanged land use",
+                 colorpal = pal_categories,
+                 # Päivitä raja-arvot ja luokkanimet vastaamaan todellisia arvoja
+                 breakvals = c(-Inf, -9000, -7000, -500, 10, Inf), # poistettu luokkia
+                 breaknames = breaknames_updated))
+
+
+
+
+plt_protein_change_combined <-
+  tmap_arrange(plt_r_protein_change_currenTO_ALLtoCL_recoded,
+               plt_r_protein_change_currenTO_ALLtoCL_recoded_outside_conservation_areas,
+               ncol = 2)
+
+plt_protein_change_combined
+
+
+# Save
+tmap_save(plt_protein_change_combined,
+          here("Figures", "Fig XX protein shifts maps.pdf"))
+
+
+
+
+
+
+```
+
+# Extended Figures in separate script
+
+
+
+
+
+# ------------------------------------------- OLD not needed
 # Gif experiment
 
 ```{r}
@@ -815,3 +1232,34 @@ tmap_arrange(
 tmap_save(plts_optimized, here("Figures", "plts_optimised.pdf"))
 
 ```
+
+
+
+```{r}
+
+pal_AlltoCL <- c("#e0e0e0", "#9CE2D5", "#6DCBD6", "#3B567A")
+
+
+
+pal_AlltoCL <- c("#d3d3d3", "#C0F8F0", "#5CB6C3", "#2F3F61")
+
+
+
+
+# All to CL - protein and kcals - no nutrients mask
+(plt_protein_and_kcal_AlltoCL_recoded_fixed <-
+  create_index_map(r_index = protein_and_kcal_AlltoCL_recoded_fixed,
+                   tocrs = "ESRI:54030",
+                   index_main_title = "",
+                   index_label = "",
+                   colorpal = pal_AlltoCL,
+                   breakvals = c(-Inf, -554, 2, 778, Inf),
+                   breaknames = breaknames_updated))
+
+
+tmap_save(plt_protein_and_kcal_AlltoCL_recoded_fixed, 
+          here("del2", "test4.png"))
+
+
+```
+

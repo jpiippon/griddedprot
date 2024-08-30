@@ -21,7 +21,7 @@ PUF_dist <- rtruncnorm(1000,
 # Calculate the median of generated values
 (PUF_median <- median(PUF_dist)) # 42%
 (PUF_mean <- mean(PUF_dist)) # 42%
-(PUF_cv <- sd(PUF_dist) / PUF_mean * 100) # 36%
+(PUF_cv <- sd(PUF_dist) / PUF_mean * 100) # 37%
 # Coefficient of Variation (CV) measures the relative variability of a dataset.
 #In this case, a CV of 36% for PUF_dist indicates that the spread of values around the mean (42%) 
 # is about 36% of the mean value. A higher CV suggests greater variability and potential uncertainty in the distribution.

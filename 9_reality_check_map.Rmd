@@ -1,0 +1,394 @@
+
+# Reality check
+
+Tutkitaan missä maankäytön muutokset ovat ongelmallisia
+
+Ensin 1km tarkkuudella, sitten 10kn
+
+!!!!!!!!!!!!!!!! tehdään tämä combined mask avulla
+
+# Load data
+
+```{r}
+# Schneider areas with NO potentially available cropland
+# ie pac = 0
+pac_no_potential_30as <-
+  here("Data", "Input", "from_harddrive",
+       "pac_2010-2039_rcp8p5_rainfed_30arcsec_sub_NO_POTENTIAL.tif") |> 
+  rast()
+
+# Jung et al top BD areas only -- this should be with 5arcmin resolution!!
+Jung_top_BD_areas_5arcmin <-
+  here("Data", "Input", "from_harddrive",
+       "Jung_top_BD_areas_5arcmin.tif") |> 
+  rast()
+
+
+# Primary vegetation from Florian
+prim_veg_0toNA_30arcsec <-
+  here("Data", "Input", "other", "primary_vege_from_Florian",
+       "primary_vegetation_0toNA_30as.tif") |> 
+  rast()
+
+
+## Primary vegetation with min use
+prim_veg_minuse_0toNA_30arcsec <- 
+  here("Data", "Input", "other", "primary_vege_from_Florian",
+       "primary_vegetation_minimaluse_0toNA_30as.tif") |> 
+  rast()
+
+
+#### plot
+plot(pac_no_potential_30as, main = "NO pac")
+plot(Jung_top_BD_areas_5arcmin, main = "Jung top BD areas")
+plot(prim_veg_0toNA_30arcsec, main = "Primary vegetation")
+  plot(prim_veg_minuse_0toNA_30arcsec, main = "Primary vegetation with min use")
+
+# use par arguments to plot all three panels in the same plot
+par(mfrow = c(2, 2))
+plot(pac_no_potential_30as, main = "NO potentially available cl")
+plot(Jung_top_BD_areas_5arcmin, main = "Jung top BD areas")
+plot(prim_veg_0toNA_30arcsec, main = "Primary vegetation")
+plot(prim_veg_minuse_0toNA_30arcsec, main = "Primary vegetation with min use")
+
+
+
+```
+
+# Kohdenna data grazing land alueille
+
+--> Onko välttämätöntä? --> EI!
+--> voitaisiinko vain poistaa priority alueet country rasterista 5arcmin hilassa?
+
+```{r}
+# Hae 1km mcd data
+# gl_mask_30arcsec <- here("Data", "Input", "from_harddrive",
+#                           "mcd_igbp6to10or16_2001_2020_na.rm_FALSE_30arcsec.tif") |> 
+#   rast()
+# gl_mask_30arcsec
+
+
+# Combine 30 as data
+r_areas_where_conversion_not_realistic_30as <-
+  c(pac_no_potential_30as,
+    prim_veg_0toNA_30arcsec,
+    prim_veg_minuse_0toNA_30arcsec)
+
+
+
+# mask  30arcsec products to grazing lands 2min
+# r_areas_where_conversion_not_realistic_30as_glmask <-
+#   mask(r_areas_where_conversion_not_realistic_30as,
+#        gl_mask_30arcsec)
+
+# mask Jung top BD areas to 5arcmin
+#Jung_top_BD_areas_5arcmin_gl <- mask(Jung_top_BD_areas_5arcmin, r_fraction_gl_0toNA)
+
+
+plot(r_areas_where_conversion_not_realistic_30as)
+# plot(r_areas_where_conversion_not_realistic_30as_glmask)
+# plot(Jung_top_BD_areas_5arcmin_gl)
+
+```
+
+
+
+
+
+# Overlay / mask
+
+From full 30arcsec country raster, remove areas with
+
+- top BD areas 5 arcmin resolution!!
+- no pac
+- primary vegetation
+- primary vegetation with min disturbance
+
+```{r}
+# create "full" raster
+cntry_raster_30arcsec <- 
+  rasterize(vect(adm10_simple_faoadded),
+            template_rast_30arcsec, field = "FAO_ID") 
+
+# Yhdistä kaikki maskit sum()-funktiolla
+r_areas_where_conversion_not_realistic_combined_30as <-
+  sum(r_areas_where_conversion_not_realistic_30as,
+    #r_areas_where_conversion_not_realistic_30as_glmask, 
+      na.rm =T)
+
+
+# convert values to 1, otherwise NA
+# combined_mask_1_or_NA <- 
+#   ifel(combined_mask_30arcsec > 0, 1, NA)
+# plot(combined_mask_1_or_NA, main = "Combined mask 1 or NA")
+plot(r_areas_where_conversion_not_realistic_combined_30as, 
+     main = "Combined mask 30arcsec - unrealistic areas for a shift")
+
+
+### to 5arcmin
+# ! na.rm = TRUE 
+# ! so if any pixel in 1km cell has value NA, it gets value NA in 5arcmin raster
+
+#this is because now only when all pixels in 1km cells have value 1 (means no go areas), it gets value 1 in 5arcmin raster
+# ! if any pixel in 1km cell has value NA, it gets value NA in 5arcmin raster
+r_areas_where_conversion_not_realistic_combined_5arcmin <- 
+  aggregate(r_areas_where_conversion_not_realistic_combined_30as,
+            fact = 10, na.rm = T) 
+
+# add Jung et al top BD areas
+r_areas_where_conversion_not_realistic_combined_5arcmin <- 
+  sum(c(r_areas_where_conversion_not_realistic_combined_5arcmin,
+        Jung_top_BD_areas_5arcmin),
+        #Jung_top_BD_areas_5arcmin_gl),
+      na.rm = T)
+
+# Convert values > 0 to 1 and otherwise NA
+r_areas_where_conversion_not_realistic_combined_5arcmin <- 
+  ifel(r_areas_where_conversion_not_realistic_combined_5arcmin > 0, 
+       1, 
+       NA)
+
+# mask ti 5arcmin to agricultural land grazing lands
+r_areas_where_conversion_not_realistic_combined_5arcmin <- 
+  mask(r_areas_where_conversion_not_realistic_combined_5arcmin,
+       r_fraction_gl_cl_total_0toNA,
+       filename = here("Data", "Intermediate_input",
+                       "areas_where_conversion_not_realistic_glclareas_5arcmin.tif"),
+       overwrite =T)
+
+plot(r_areas_where_conversion_not_realistic_combined_5arcmin,
+     main = "Unrealistic areas for shift - strict estimate with na.rm=T")
+
+# this is maybe too conservative?
+
+
+
+
+# r_areas_where_conversion_is_possible_30as <- 
+#   mask(cntry_raster_30arcsec, # full country raster is masked outside the regions
+#        combined_mask_30arcsec, # where land usage is not realistic
+#        inverse = TRUE)
+# 
+# r_areas_where_conversion_is_possible_30as_1_or_NA <- 
+#   ifel(r_areas_where_conversion_is_possible_30as > 0, 1, NA)
+# 
+# plot(r_areas_where_conversion_is_possible_30as, main = "Reality check - where gl to cl is possible")
+# plot(r_areas_where_conversion_is_possible_30as_1_or_NA, main = "Reality check 1 or NA - where gl to cl is possible")
+# 
+
+# ####### Aggregate to 5arcmin resolution
+# r_reality_check_5arcmin <- 
+#   aggregate(r_reality_check_1_or_NA, fact = 10, na.rm = T) |> 
+#   mask(r_fraction_gl_cl_total_0toNA,
+#        filename = here("Data", "Intermediate_input",
+#                        "r_reality_check_5arcmin.tif"),
+#        overwrite =T)
+
+
+
+
+################################# get the data
+r_areas_where_conversion_not_realistic_combined_5arcmin <-
+  rast(here("Data", "Intermediate_input",
+              "areas_where_conversion_not_realistic_glclareas_5arcmin.tif"))
+
+
+
+plot(r_areas_where_conversion_not_realistic_combined_5arcmin,
+     main = "Unrealistic areas for gl to cl - strict estimate with na.rm=T")
+
+
+```
+
+
+# Better maps of restricted areas
+
+```{r}
+r_areas_where_conversion_not_realistic_combined_5arcmin_NAto0 <- 
+  ifel(is.na(r_areas_where_conversion_not_realistic_combined_5arcmin), 
+       0,
+       r_areas_where_conversion_not_realistic_combined_5arcmin) |> 
+  mask(r_fraction_gl_cl_total_0toNA)
+
+# this map to be shown?
+(plt_combined_mask_5arcmin <- 
+    create_index_map(r_index = r_areas_where_conversion_not_realistic_combined_glmask_5arcmin_NAto0, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Conservation priority regions",
+                     index_label = "",
+                     colorpal = c("#D3D3D3", "#1F77B4"), 
+                     breakvals =  c(-Inf, 0.1, Inf ), 
+                     breaknames = c("Not a priority", "Priority area")))
+
+
+
+
+# areas where conversion is possible
+# r_reality_check_5arcmin_NAto0 <- 
+#   ifel(is.na(r_reality_check_5arcmin), 0, r_reality_check_5arcmin) |> 
+#   mask(r_fraction_gl_cl_total_0toNA)
+# 
+# (plot_reality_check_5arcmin <- 
+#     create_index_map(r_index = r_reality_check_5arcmin_NAto0, 
+#                      tocrs = "ESRI:54030",
+#                      index_main_title = "Areas where conversion is possible",
+#                      index_label = "",
+#                      colorpal = c("#D3D3D3", "#1F77B4"), 
+#                      breakvals =  c(-Inf, 0.1, Inf ), 
+#                      breaknames = c("Not possible", "Possible")))
+
+```
+
+#################### OLD
+
+# Test with the final map
+
+```{r}
+# 25% to 1000% here
+r_protein_change_currenTO_ALLtoCL_recoded <- 
+  here("Data", "Intermediate_input",
+       "r_protein_change_currenTO_ALLtoCL_recoded_m25to1000.tif") |> # ! Recoded
+  rast()
+
+# priority conservation areas
+r_areas_where_conversion_not_realistic_combined_glmask_5arcmin <-
+  rast(here("Data", "Intermediate_input",
+              "areas_where_conversion_not_realistic_glmask_5arcmin.tif"))
+
+
+# mask outside priority areas
+r_protein_change_currenTO_ALLtoCL_recoded_reality_check <-
+  mask(r_protein_change_currenTO_ALLtoCL_recoded,
+       r_areas_where_conversion_not_realistic_combined_glmask_5arcmin,
+       inverse = T)
+
+
+
+# Plot
+breaknames_updated <- c("Grazing remains (29%)", 
+                        "Cropland remains (14%)", 
+                        "Mosaic remains (17%)", 
+                        "Beneficial shifts (28%)", 
+                        "Adverse shifts (12%)") #Cropland to Grazing? we dont know for sure
+
+
+
+
+pal_categories <- 
+  c("#A6CEE3", "#C0A2C7", "#1F78B4", "#B2DF8A", "#FFA500")#
+
+(plt_r_protein_change_currenTO_ALLtoCL_recoded_realitycheck <-
+create_index_map(r_index = r_protein_change_currenTO_ALLtoCL_recoded_reality_check,
+                 tocrs = "ESRI:54030",
+                 index_main_title = "Comparing protein outputs: existing land use vs 'all suitable to cropland'",
+                 index_label = "Direction of change: if protein shift [-25, 1000]%, unchanged land use",
+                 colorpal = pal_categories,
+                
+                 breakvals = c(-Inf, -9000, -7000, -500, 10, Inf),
+                 breaknames = breaknames_updated))
+
+
+
+
+
+```
+
+# How much the protein yield would increase if all beneficial shifts would be converted to cropland?
+
+
+
+```{r}
+# Separate "beneficial shift" areas
+r_perhaps_realistic_protein_increase_areas <-
+  ifel(r_protein_change_currenTO_ALLtoCL_recoded_outside_conservation_areas == 1, # 1 means converting is beneficial
+       r_protein_change_currenTO_ALLtoCL_recoded_outside_conservation_areas,
+       NA) 
+
+plot(r_perhaps_realistic_protein_increase_areas, col = "#B2DF8A")
+
+# use this as a mask to show:
+# how much is the combined protein yield in these areas of beneficial shifts?
+r_optimised_combined_protein_yield_kg_perpix_where_beneficial_shifts <- 
+  mask(r_optimised_combined_protein_yield_kg_perpix_positive$prot_kgpix_SI1, # ALL to CL where SI > 1
+       r_perhaps_realistic_protein_increase_areas)
+
+
+# Use existing protein yields elsewhere
+r_protein_combined_kg_perpix_where_no_changes_in_land_use <-
+  mask(r_protein_combined_kg_perpix, 
+       r_perhaps_realistic_protein_increase_areas, 
+       inverse = T) |> 
+  mask(r_fraction_gl_cl_total_0toNA)
+
+# Plot both
+plot(r_optimised_combined_protein_yield_kg_perpix_where_beneficial_shifts, col = "#B2DF8A")
+plot(r_protein_combined_kg_perpix_where_no_changes_in_land_use, col = "#1F78B4")
+
+# combine these
+r_perhaps_realistic_protein_production_kg_perpix <-
+  classify(r_protein_combined_kg_perpix_where_no_changes_in_land_use, cbind(NA, 0)) +
+  classify(r_optimised_combined_protein_yield_kg_perpix_where_beneficial_shifts, cbind(NA, 0)) |> 
+  mask(r_fraction_gl_cl_total_0toNA)
+
+# Compare with existing production
+global(r_perhaps_realistic_protein_production_kg_perpix, "sum", na.rm=T)/1e9
+global(r_protein_combined_kg_perpix, "sum", na.rm=T)/1e9
+
+(global(r_perhaps_realistic_protein_production_kg_perpix, "sum", na.rm=T) - global(r_protein_combined_kg_perpix, "sum", na.rm=T)) /
+  global(r_protein_combined_kg_perpix, "sum", na.rm=T) * 100
+
+# 21.63% more protein could be produced if all beneficial shifts would be converted to cropland!!
+
+
+```
+
+
+
+
+
+# Alternative 2 -- much more conservative with na.rm = T
+
+```{r}
+# combined_mask_5arcmin_narm_TRUE <-
+#   aggregate(combined_mask_1_or_NA, fact = 10, na.rm = T) |>
+#   mask(r_fraction_gl_cl_total_0toNA) 
+# 
+# plot(combined_mask_5arcmin_narm_TRUE, main = "Combined mask 5arcmin - na.rm = TRUE")
+# 
+# combined_mask_5arcmin_narm_TRUE_NAto0 <-
+#   ifel(is.na(combined_mask_5arcmin_narm_TRUE), 0, combined_mask_5arcmin_narm_TRUE) |> 
+#   mask(r_fraction_gl_cl_total_0toNA)
+# 
+# (plt_combined_mask_5arcmin_narm_TRUE <- 
+#     create_index_map(r_index = combined_mask_5arcmin_narm_TRUE_NAto0, 
+#                      tocrs = "ESRI:54030",
+#                      index_main_title = "Conservation priority regions - conservative estimate",
+#                      index_label = "",
+#                      colorpal = c("#D3D3D3", "#1F77B4"), 
+#                      breakvals =  c(-Inf, 0.1, Inf ), 
+#                      breaknames = c("Not a priority", "Priority area")))
+# 
+# 
+# 
+# 
+# # mask final results outside these areas
+# breaknames_updated <- c("Grazing remains (%)", 
+#                         "Cropland remains (%)", 
+#                         "Mosaic remains (%)", 
+#                         "Beneficial shifts (%)", 
+#                         "Adverse shifts (%)") #Cropland to Grazing
+# 
+# 
+# 
+# (plt_r_protein_change_currenTO_ALLtoCL_recoded_realitycheck_narm_TRUE <-
+# create_index_map(r_index = mask(r_protein_change_currenTO_ALLtoCL_recoded_reality_check,
+#                                 combined_mask_5arcmin_narm_TRUE, inverse = T),
+#                  tocrs = "ESRI:54030",
+#                  index_main_title = "MORE strict reality check",
+#                  index_label = "Direction of change. If protein production changes < ±50%, land use remains same)",
+#                  colorpal = pal_categories,
+#                 
+#                  breakvals = c(-Inf, -9000, -7000, -500, 10, Inf),
+#                  breaknames = breaknames_updated))
+```
+

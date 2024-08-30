@@ -52,9 +52,21 @@ timestep_2001_2015 <- 2001:2015 # is this even needed?
 timestep_2001_2020 <- 2001:2020
 timestep_climnorm <- 1991:2020
 
-template_rast_5arcmin <- rast(nrows=2160, ncols=4320,
+
+template_rast_5arcmin <- rast(nrows=180*60/5, ncols= 360*60/5 , # 2160 rows 4320 cols
                               crs = "EPSG:4326")
+
+template_rast_1arcmin <- rast(nrow=180*60, ncol=360*60, # 10800 rows 21600 cols
+                              crs = "EPSG:4326") 
+
+template_rast_30arcsec <- rast(nrows=180*60*2, ncols=360*60*2, # 21600 rows 43200 cols
+                               crs = "EPSG:4326")
+
+
+
 e <- ext(-180, 180, -90, 90)
+
+
 
 # Polygons
 adm_10m <- here("Data", "Input", "ne_10m_admin_0_countries.shp") |> 
@@ -126,13 +138,16 @@ adm10_simple_faoadded <-
   here("Data", "Intermediate_input", "adm10_simple_faoadded.gpkg") %>%
   st_read()
 
+adm10_simple_faoadded <- 
+  adm10_simple_faoadded |> 
+  mutate(ID = row_number())
 
 
 
 ## convert to raster
 cntry_raster <- rasterize(vect(adm10_simple_faoadded),
                           template_rast_5arcmin, field = "FAO_ID")
-plot(cntry_raster, main = "Antarctica neede or not?")
+#plot(cntry_raster, main = "Antarctica neede or not?")
 
   ## convert to rob
 
@@ -230,7 +245,7 @@ create_index_map <- function(r_index, index_label,index_main_title,
   if (!is.na(tocrs)){
     r_index <- project(r_index, tocrs, mask = TRUE)
   }
-  index_map <- tm_shape(r_index) + 
+  index_map <- tm_shape(r_index) + # add here raster.downsample = 0 if needed
     tm_raster(palette = colorpal, # try style = "fixed", 
               breaks = breakvals,
               labels = breaknames,
@@ -250,7 +265,7 @@ create_index_map <- function(r_index, index_label,index_main_title,
               legend.outside.position = "bottom", # added 9,8
               frame = FALSE)+
     tm_shape(adm10_simple_faoadded_rob) + # was reg_rob_simple
-    tm_borders(col = NA,  lwd = 0.5)  # lwd was 0.33, col was "grey30",
+    tm_borders(col = NA,  lwd = 0.15)  # lwd was 0.33, col was "grey30",
   
   return (index_map)
 } 
@@ -317,5 +332,5 @@ f_raster_without_outliers <- function(myraster_layer) {
 
 
 land_mask <- ifel(cntry_raster > 0, 1, NA)
-plot(land_mask)
+#plot(land_mask)
 

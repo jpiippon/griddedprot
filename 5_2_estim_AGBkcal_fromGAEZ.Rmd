@@ -1,0 +1,98 @@
+# KCAL yields everywhere
+
+First PROTEIN, existing + new GL areas
+
+```{r}
+r_agb_prot_existing_plus_new_areas_kg_ha <-
+  here("Data", "Intermediate_input", 
+       "r_agb_prot_existing_plus_new_areas_kg_ha.tif") %>% 
+  rast()
+
+
+```
+
+# Convert to KCAL
+
+Function from another script where AGB protein has been converted to KCAL
+
+```{r}
+# Similar function but PER HA
+f_energy_from_protein_MMkcal_perha_gaez <- function(animalcategory_fao) {
+
+  ## get protein fraction for spesific crop species
+  faoid_and_one_kg_prot_to_kcal <-
+    fbs_animals_wide_filled %>%
+    filter(Item == animalcategory_fao) %>%
+    dplyr::select(Area.Code, 
+                  one_kg_prot_to_kcal) # created elsewhere
+
+  ## reclassification matrix
+  rcl_mat_countries_to_one_kg_prot_to_kcal <-
+    matrix(c(
+      faoid_and_one_kg_prot_to_kcal$Area.Code,
+      faoid_and_one_kg_prot_to_kcal$one_kg_prot_to_kcal),
+      ncol = 2)
+
+  ## classify. Creates a raster that shows one_kg_to_prot for each country
+  r_one_kg_prot_to_kcal  <- 
+    cntry_raster %>% 
+    classify(rcl_mat_countries_to_one_kg_prot_to_kcal, 
+             others = 
+               (fbs_animals_wide_filled %>%
+                       filter(Area == "World", Item == animalcategory_fao) %>% 
+                  pull(one_kg_prot_to_kcal))) # fill empty values with global averages
+  
+  
+  # protein production raster --> USE GAEZ raster here!
+  r_protein_production_animals <- r_agb_prot_existing_plus_new_areas_kg_ha
+  
+
+  ## kcal production raster
+  r_kcal_MM_perha <-
+    r_protein_production_animals * r_one_kg_prot_to_kcal / 1e6
+  names(r_kcal_MM_perha) <- paste0(animalcategory_fao, "_MMkcal_ha")
+
+  return(r_kcal_MM_perha) # per ha 
+}
+
+# use function for different animals
+r_kcal_from_AGB_MM_perha_gaez <- c(
+
+  f_energy_from_protein_MMkcal_perha_gaez(animalcategory_fao = "Bovine Meat"),
+
+  f_energy_from_protein_MMkcal_perha_gaez(animalcategory_fao = "Mutton & Goat Meat") ,
+
+  # add kcal produced by current herd structure
+  f_energy_from_protein_MMkcal_perha_gaez(animalcategory_fao = "Meat")  
+)
+
+
+r_kcal_from_AGB_MM_perha_gaez
+plot(r_kcal_from_AGB_MM_perha_gaez)
+
+# lets use the mean in calculation
+r_kcal_from_AGB_MM_perha_gaez_mean_existing_plus_newareas <- mean(r_kcal_from_AGB_MM_perha_gaez, na.rm= T)
+
+names(r_kcal_from_AGB_MM_perha_gaez_mean_existing_plus_newareas) <-
+  "AGB_MM_kcal_ha"
+
+r_kcal_from_AGB_MM_perha_gaez_mean_existing_plus_newareas
+```
+# Save
+
+```{r}
+# SAVE
+writeRaster(r_kcal_from_AGB_MM_perha_gaez_mean_existing_plus_newareas,
+            filename= 
+              here("Data", "Intermediate_input",
+                   "r_kcal_from_AGB_MM_perha_gaez_mean_existing_plus_newareas.tif"),
+            overwrite = T)
+
+
+### get the file
+r_kcal_from_AGB_MM_perha_gaez_mean_existing_plus_newareas <-
+  here("Data", "Intermediate_input",
+       "r_kcal_from_AGB_MM_perha_gaez_mean_existing_plus_newareas.tif") |> 
+  rast()
+```
+

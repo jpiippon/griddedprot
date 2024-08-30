@@ -1,0 +1,444 @@
+---
+title: "LUR"
+author: "Johannes Piipponen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+! Revision: add LUR gif to the SM?
+
+
+Present the results using LUR approach developed by Hannah van Zanten:
+https://link.springer.com/article/10.1007/s11367-015-0944-1
+
+
+# Get protein digestibility data
+
+This is needed to calculate LUR.
+
+We conducted a preliminary literature review to determine the digestibility values of various food items. In doing so, we found digestibility values for most of the SPAM crops and all of the meat items. Subsequently, we calculated average digestibility values for both SPAM food crops and meat items. However, we were unable to find the digestibility values for the SPAM items "Yams", "Roots, Other", "Bananas", and "Plantains".
+
+For these items, we used a single average value derived from the mean digestibility values of the 27 other SPAM food crops. This was considered a reasonable approximation given the lack of available data for these specific crops. The comprehensive table of protein digestibility values used in our analysis, including the references from which the information was derived, can be found in the Appendix
+
+```{r}
+# Read the excel file into a data frame
+digest_raw <- readxl::read_excel(here("Data", "Input", "other", "Protein_digestibility.xlsx"))
+digest_raw$Protein_digestibility_mean_percent <-
+  as.numeric(digest_raw$Protein_digestibility_mean_percent)
+
+
+digest_raw <- digest_raw %>% 
+  mutate(across(where(is.numeric), ~ round(., digits = 1))) 
+
+# Separate animal related items into a separate table
+animal_items <- 
+  dplyr::filter(digest_raw, Item %in% c("Cattle meat", "Sheep and goat meat", "Cattle milk")) %>% 
+  dplyr::select(Item, Protein_digestibility_mean_percent)
+
+
+
+# Separate plant items into a separate table
+plant_items <- 
+  dplyr::filter(digest_raw, !grepl("meat", Item, ignore.case = TRUE)) %>%
+  dplyr::select(Item, SPAM_name, Protein_digestibility_mean_percent)
+
+
+
+
+# Save the sources in a separate table
+ref <- digest_raw %>%
+  dplyr::select(Item, Source, Notes)
+
+
+
+# ---------------------------------------------------- calculate averages
+livestockProt_digestibility <- mean(animal_items$Protein_digestibility_mean_percent, na.rm = TRUE)
+plant_digestibility <- mean(plant_items$Protein_digestibility_mean_percent, na.rm = TRUE)
+
+livestockProt_digestibility # 94
+plant_digestibility # 84
+```
+
+
+
+
+
+# LUR with predicted yields = LUR in ALL GRAZING LAND scenario?
+
+Tässä siis tiedossa eläinten tuottama protskusato JA kasvien tuottama protskusato.
+Kasvien protskusato tiedossa nykyisiltä croplandeilta sekä alueilta joilla gl voidaan muuntaa cl
+Eläinten protskusato tiedossa gl alueila sekä niiltä cl alueilta, joilla oli aiemmin vain cl
+
+--> mutta sisältääkö tämä ne alueet, joissa esim nyt 20%gl ja 30%cl, mutta joista tarvitaan skenaario jossa 50% solusta gl? Halutaan siis ALL GL skenaario
+  -> tiedetään alun perin kuinka monta ha tarvitaan tuottamaan 1kg proteiinia. Tämä tulee suoraan FCR kautta. Muuttuuko tämä mihinkään jos solusta on käytetty suurempi osa elukoille? Vastaus: Ei koska nyt laskettu biomassasta joka on joku lkm per ha
+
+```{r}
+# first create few masks
+# SI_5arcmin <- 
+#   here("Data", "Input", "from_harddrive",
+#        "SI_5arcmin_overall_suitability_subset1to17_2010-2039_rcp8p5_rainfed.tif") |> 
+#   rast()
+
+#SI_5arcmin_range_1to10 <- SI_5arcmin
+# SI_5arcmin_range_1to33 <- SI_5arcmin
+# 
+# #SI_5arcmin_range_1to10 <- ifel(SI_5arcmin_range_1to10 >= 1 & SI_5arcmin_range_1to10 < 10, 1, NA)
+# SI_5arcmin_range_1to33 <- ifel(SI_5arcmin_range_1to33 >= 1 & SI_5arcmin_range_1to33 < 33, 1, NA)
+
+
+
+# tutkitaan existing + olemassaolevia satoja ja lasketaan niiden perusteella LUR 
+
+  # LO
+LO_existing_plus_predicted_areas <- 
+  1 / r_agb_prot_existing_plus_new_areas_kg_ha # no digestibility needed
+  # convert NA to 0 to make multiplication easier
+LO_existing_plus_predicted_areas_NAto0 <-
+  classify(LO_existing_plus_predicted_areas, cbind(NA, 0))
+
+
+# all the other data frim intermediate inputs
+r_agb_prot_existing_plus_new_areas_kg_ha
+r_crop_prot_existing_plus_new_areas_kg_ha
+LO_existing_plus_predicted_areas_NAto0
+
+
+  # HDP
+HDP_predicted <- #not "predicted" but derived from GAEZ estimates
+  r_crop_prot_existing_plus_new_areas_kg_ha * plant_digestibility
+HDP_predicted_NAto0 <- classify(HDP_predicted, cbind(NA,0))
+  
+  # "how much human digestible protein in 1 kg of animal protein
+digestibleAnimalProtein <- 1 * livestockProt_digestibility  
+
+
+  # LUR
+LUR_protein <- 
+  (LO_existing_plus_predicted_areas_NAto0 * HDP_predicted_NAto0) / 
+  digestibleAnimalProtein
+
+LUR_protein <- mask(LUR_protein, r_fraction_gl_cl_total_0toNA)
+
+
+############################################################## mask
+  # mixed: areas where >= 10% gl and also >= 10% gl
+# LUR_protein_wheremixed <- 
+#   mask(LUR_protein, r_gl_cl_share_mixed) # removed in revision
+
+  # on areas where 1 < SI < 10
+#LUR_protein_SIbetween1to10mask <- mask(LUR_protein, SI_5arcmin_range_1to10)
+# LUR_protein_SIbetween1to33mask <- mask(LUR_protein, SI_5arcmin_range_1to33)
+
+
+# Stack
+# LUR_protein_nlyr2 <-
+#   c(LUR_protein,
+#  #   LUR_protein_wheremixed,
+#   #  LUR_protein_SIbetween1to10mask,
+#  LUR_protein_SIbetween1to33mask)
+# names(LUR_protein_nlyr2) <- 
+#   c("LUR protein",  "LUR protein SI1to33")#"LUR protein mix",
+
+names(LUR_protein) <- "LUR protein"
+# Plot
+
+create_index_map(r_index = LUR_protein, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "LUR using prot ylds and land demand for animals and crops (GAEZ estimates for mis regs)",
+                     index_label = "[LUR]",
+                     colorpal = pal_lur,
+                     breakvals = c(0, 1, 10, 100,  Inf),
+                     breaknames = c("< 1", "1-10","10-100",">100"))
+
+
+
+
+
+
+
+# test median LUR
+df_LUR_protein<- 
+  terra::as.data.frame(LUR_protein, xy = T)
+
+df_LUR_protein <- df_LUR_protein %>% 
+  dplyr::select(-x,-y)
+
+median(df_LUR_protein$`LUR protein`, na.rm = T) # 10.4
+
+
+df_LUR_protein_medians <- 
+  map_df(df_LUR_protein, ~ data.frame(median = median(., na.rm = TRUE)))
+
+df_LUR_protein_medians 
+# Median LUR 8.8 -- was 35
+# Median LUR on areas where SI between 1to33 is 10
+
+
+# save
+writeRaster(LUR_protein, 
+            here("Data", "Intermediate_input","LUR_protein.tif"),
+            overwrite = T)
+
+
+###### get the file
+r_LUR_protein <- 
+  here("Data", "Intermediate_input","LUR_protein.tif") %>%
+  rast()
+
+```
+
+# LUR for energy
+
+- Kcal yields across all agricultural land
+- digestibility not accountet for
+
+
+```{r}
+r_kcal_from_AGB_MM_perha_gaez_mean_existing_plus_newareas <-
+  here("Data", "Intermediate_input",
+       "r_kcal_from_AGB_MM_perha_gaez_mean_existing_plus_newareas.tif") |> 
+  rast()
+
+r_crop_kcal_existing_plus_new_areas_MM_ha <-
+  here("Data", "Intermediate_input",
+       "r_crop_kcal_existing_plus_new_areas_MM_ha.tif") |> 
+  rast()
+
+
+# Convert to 1000 kcal per ha
+# For example, if unit was (in MM kcal) 2 --> it is now 2000 (2 * 1000)
+r_kcal_from_AGB_1000kcal_perha_existing_plus_newareas <-
+  r_kcal_from_AGB_MM_perha_gaez_mean_existing_plus_newareas * 1000
+
+r_kcal_from_crops_1000kcal_perha_existing_plus_newareas <-
+  r_crop_kcal_existing_plus_new_areas_MM_ha * 1000
+
+
+# Calculate LO for energy
+# Amount of hectares needed to produce 1 kcal of energy
+LO_existing_plus_predicted_areas_energy <- 
+  1 / r_kcal_from_AGB_1000kcal_perha_existing_plus_newareas
+
+LO_existing_plus_predicted_areas_energy_NAto0 <-
+  classify(LO_existing_plus_predicted_areas_energy, cbind(NA, 0))
+
+
+# HDP for energy
+# HDP = "the amount of energy that crops can produce per hectare in the same cell"
+HDP_energy_NAto0 <- 
+  classify(r_kcal_from_crops_1000kcal_perha_existing_plus_newareas,
+           cbind(NA, 0))
+
+# No digestibility!
+LUR_energy <- 
+  (LO_existing_plus_predicted_areas_energy_NAto0 * 
+     HDP_energy_NAto0) / 
+  1 # no digestibility accounted for, so this is 1
+
+LUR_energy <- 
+  mask(LUR_energy, r_fraction_gl_cl_total_0toNA)
+names(LUR_energy) <- "LUR energy"
+
+
+# Plot
+create_index_map(r_index = LUR_energy, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "LUR using kcal ylds and land demand for animals and crops (GAEZ estimates for mis regs)",
+                     index_label = "[LUR]",
+                     colorpal = pal_lur,
+                     breakvals = c(0, 1, 10, 100,  Inf),
+                     breaknames = c("< 1", "1-10","10-100",">100"))
+# Interpretation: quite similar to protein figure!
+
+
+# Median lur
+median(values(LUR_energy, na.rm = T)) #  33
+
+# Save 
+writeRaster(LUR_energy, 
+            here("Data", "Intermediate_input","LUR_energy.tif"),
+            overwrite = T)
+
+# get the file
+r_LUR_energy <- 
+  here("Data", "Intermediate_input","LUR_energy.tif") %>%
+  rast()
+
+
+
+```
+
+# How many hectares under LUR < 1.0?
+
+```{r}
+LUR_protein_1_or_below <- ifel(LUR_protein > 1, NA, 1)
+LUR_energy_1_or_below <- ifel(LUR_energy > 1, NA, 1)
+
+plot(LUR_protein_1_or_below)
+plot(LUR_energy_1_or_below)
+
+# Land area in ha where LUR <= 1
+r_area_LUR_protein_1_or_below <- 
+  mask(r_fraction_gl_cl_total_0toNA,  # total agr land area
+       LUR_protein_1_or_below) *  
+  cellSize(r_fraction_gl_cl_total_0toNA, unit = "ha")
+
+r_area_LUR_energy_1_or_below <- 
+  mask(r_fraction_gl_cl_total_0toNA,  # total agr land area
+       LUR_energy_1_or_below) *  
+  cellSize(r_fraction_gl_cl_total_0toNA, unit = "ha")  
+
+
+
+# Global sums
+global(r_area_LUR_protein_1_or_below, "sum", na.rm = T)/1e6 # 1728 Mha
+global(r_area_LUR_energy_1_or_below, "sum", na.rm = T)/1e6- # 1716 Mha
+
+```
+
+
+
+###########################################################
+#################################################### OLD
+# LUR in scenario where cropland CANNOT decrease
+
+```{r}
+# HDP
+# r_optimised_protein_crops_mt_perpix_positive <- 
+#   here("Data", "Intermediate_input", "r_optimised_protein_crops_mt_perpix_positive.tif") %>%
+#   rast()
+# 
+# 
+# # Convert to kg per ha --> 
+# r_optimised_protein_crops_kg_ha_positive <-
+#   (r_optimised_protein_crops_mt_perpix_positive * 1000) /
+#   (cellSize(r_optimised_protein_crops_mt_perpix_positive[[1]], unit = "ha") * 
+#      r_SIbased_restricted_max_cropland_fraction)
+# 
+# # convert negative values to zeros
+# r_optimised_protein_crops_kg_ha_positive <-
+#   terra::ifel(r_optimised_protein_crops_kg_ha_positive < 0,
+#               0,
+#               r_optimised_protein_crops_kg_ha_positive)
+# 
+# 
+# # convert Inf values to zeros (Inf values if r_SIbased_restricted_max_cropland_fraction_NAto0 = 0)
+# r_optimised_protein_crops_kg_ha_positive <- 
+#   classify(r_optimised_protein_crops_kg_ha_positive, cbind(Inf, 0))
+# 
+# HDP_SI_based_positive <- r_optimised_protein_crops_kg_ha_positive * plant_digestibility
+# 
+# 
+# 
+# # ---------------------------------------------------------------------- LUR _positive
+# LUR_SI_based_positive <- 
+#   (LO_existing_plus_predicted_areas_NAto0 * HDP_SI_based_positive) / 
+#   digestibleAnimalProtein
+# 
+# 
+# # now croplands are NA if SI increases. Those NA cells in agricultural land areas should get value 0 as LUR = 0 if crops cannot be produced
+# LUR_SI_based_NAto0_positive <- 
+#   classify(LUR_SI_based_positive, cbind(NA,0))
+#   # mask to procution areas
+# LUR_SI_based_NAto0_positive <- 
+#   mask(LUR_SI_based_NAto0_positive, r_fraction_gl_cl_total_0toNA)
+# 
+# 
+# writeRaster(LUR_SI_based_NAto0_positive,
+#             here("Data", "Intermediate_input", "LUR_SI_based_NAto0_positive.tif"),
+#             overwrite = T)
+# 
+# 
+# ################################### get the file
+# LUR_SI_based_NAto0_positive <-
+#   here("Data", "Intermediate_input", "LUR_SI_based_NAto0_positive.tif") %>% 
+#   rast()
+# 
+# names(LUR_SI_based_NAto0_positive) <- paste0("LUR_SI_gte", threshold_values)
+```
+
+
+
+
+
+# plots for LUR scenario where cropland cannot decrease
+
+```{r}
+# df_LUR_SI_based_NAto0_positive <- 
+#   terra::as.data.frame(LUR_SI_based_NAto0_positive, xy = T)
+# 
+# head(df_LUR_SI_based_NAto0_positive)
+# names(df_LUR_SI_based_NAto0_positive)
+# 
+# df_LUR_SI_based_NAto0_noXY_positive <- df_LUR_SI_based_NAto0_positive %>% 
+#   dplyr::select(-x,-y)
+# 
+# df_LUR_SI_based_NAto0_noXY_medians_positive <- 
+#   map_df(df_LUR_SI_based_NAto0_noXY_positive, ~ data.frame(median = median(., na.rm = TRUE)))
+# 
+# df_LUR_SI_based_NAto0_noXY_medians_positive
+# df_LUR_SI_based_NAto0_noXY_medians_positive$median %>% plot() 
+# # save this data
+# df_LUR_SI_based_NAto0_noXY_medians_positive <-
+#   tibble(SI = 0:99,
+#          LUR_median = df_LUR_SI_based_NAto0_noXY_medians_positive$median)
+# 
+# write.csv(df_LUR_SI_based_NAto0_noXY_medians_positive,
+#           here("Data", "Output", "LUR_medians_different_SI_thresholds.csv"))
+# 
+# # palette was pal_lur_inc_grey earlier
+# pal_lur_inc_grey <- c("#A0A0A0", pal_lur) # add grey to -999 values
+# # 
+# (plt_LUR10_positive <- 
+#   create_index_map(r_index = LUR_SI_based_NAto0_positive[[10]], 
+#                    tocrs = "ESRI:54030",
+#                    index_main_title = "LUR when SI>10 areas could be converted to croplands CL CANNOT DEC",
+#                    index_label = "[LUR]",
+#                    colorpal = pal_lur_inc_grey,
+#                    breakvals = c(-999, 0, 1, 10, 100,  Inf),
+#                    breaknames = c("Not known, only crops", "0-1","1-10","10-100",">100")))
+# 
+# 
+# 
+# (plt_LUR33_positive <- 
+#   create_index_map(r_index = LUR_SI_based_NAto0_positive[[33]], 
+#                    tocrs = "ESRI:54030",
+#                    index_main_title = "LUR when SI>33 areas could be converted to croplands CL CANNOT DEC",
+#                    index_label = "[LUR]",
+#                    colorpal = pal_lur_inc_grey,
+#                    breakvals = c(-999, 0, 1, 10, 100,  Inf),
+#                    breaknames = c("Not known, only crops", "0-1","1-10","10-100",">100")))
+# 
+# (plt_LUR75_positive <- 
+#   create_index_map(r_index = LUR_SI_based_NAto0_positive[[75]], 
+#                    tocrs = "ESRI:54030",
+#                    index_main_title = "LUR when SI>75 areas could be converted to croplands CL CANNOT DEC",
+#                    index_label = "[LUR]",
+#                    colorpal = pal_lur_inc_grey,
+#                    breakvals = c(-999, 0, 1, 10, 100,  Inf),
+#                    breaknames = c("Not known, only crops", "0-1","1-10","10-100",">100")))
+# 
+# 
+# (plt_LUR98_positive <- 
+#   create_index_map(r_index = LUR_SI_based_NAto0_positive[[98]], 
+#                    tocrs = "ESRI:54030",
+#                    index_main_title = "LUR when SI>98 areas could be converted to croplands CL CANNOT DEC",
+#                    index_label = "[LUR]",
+#                    colorpal = pal_lur_inc_grey,
+#                    breakvals = c(-999, 0, 1, 10, 100,  Inf),
+#                    breaknames = c("Not known, only crops", "0-1","1-10","10-100",">100")))
+# 
+# 
+# plts_lur_positive <-
+#   tmap_arrange(plt_LUR10_positive, plt_LUR33_positive, 
+#                plt_LUR75_positive, plt_LUR98_positive, 
+#                ncol = 2)
+# plts_lur_positive
+
+
+# 
+# tmap_save(plts_lur_positive, 
+#           filename = here("Supplementary_materials", "LUR_indifThresholds_4mapspositive.pdf"))
+```
+

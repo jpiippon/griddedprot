@@ -5,6 +5,10 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
+!! EDIT in revision
+- "mixed" area analysis removed
+- SI < 10 areas removed --> we now use SI < 33 areas to get more spatial coverage
+
 
 
 Data saved to folder Intermediate inputs
@@ -21,15 +25,47 @@ However, old codes below just in case one wants to explore this for different li
 Grazing livestock's share of total protein production on agricultural land
 This map illustrates the percentage of protein produced by grazing livestock in relation to the combined protein production from both grazing livestock and the 27 SPAM food crops on agricultural land. It highlights the areas where grazing livestock plays a more significant role in contributing to the total protein production within agricultural systems.
 
+
+# First, plot protein production levels
+Both from AGB and SPAM, then also combined
+
 ```{r}
+
 # calculate combined protein that we can get from a cell (combined = protein_grazing_livestock + protein_crops)
 r_protein_combined_kg_perpix <-
   1000 * classify(r_prot_allcrops_sum_mt_perpix, cbind(NA, 0)) +
   classify(r_protein_from_AGB_kg_perpix$current_herd_str, cbind(NA, 0))
 
 names(r_protein_combined_kg_perpix) <- "combined_protein"
+#plot(r_protein_combined_kg_perpix, main = "combined protein")'
+r_protein_combined_kg_perpix_0toNA <-
+  classify(r_protein_combined_kg_perpix, cbind(0, NA))
 
 
+pal_protein_lajolla <- scico(n = 6, palette = "lajolla", begin = 0.15, end = 1, direction = -1) 
+
+
+# PER PIX
+(plt_agb_and_crop_protein <-
+  create_index_map(r_index = c( r_prot_allcrops_sum_mt_perpix,
+                               r_protein_from_AGB_kg_perpix$current_herd_str/1000,
+                               r_protein_combined_kg_perpix_0toNA/1000),
+                   tocrs = "ESRI:54030",
+                   index_main_title = "Protein production from AGB and from SPAM food crops in 2010",
+                   index_label = "[kg/ha]",
+                   colorpal = pal_protein_lajolla,
+                   breakvals = c(0, 10, 50, 100, 250, 500, Inf),
+                   breaknames = c("0-10","10-50", "50-100",
+                                  "100-250","250-500",  ">500")))
+# # interpretation:
+# animals produce much less
+
+
+```
+
+# Grasing animals share of the total protein production
+
+```{r}
 
 # Grazing livestock's share of total protein production on agricultural land
 # share of the total protein that originates from livestock
@@ -40,8 +76,22 @@ r_protein_from_AGB_current_str_kg_perpix_NAto0 <-
 r_share_of_total_protein_livestock <- 
   100* (r_protein_from_AGB_current_str_kg_perpix_NAto0 /
           r_protein_combined_kg_perpix)
-plot(r_share_of_total_protein_livestock, 
-     main = "Contribution of livestock to total protein production")
+
+
+qtm(r_share_of_total_protein_livestock, title = "Contribution of livestock to total protein production")
+ # just shows that gl area >> cl area
+
+pal_share <-  scico(n = 10, palette = "roma", begin = 0.1, end = 0.9, direction = -1) # change name?
+
+create_index_map(r_index = r_share_of_total_protein_livestock , 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "Grazing livestock share of tot protein prod",
+                     index_label = "[%]",
+                     colorpal = pal_share,
+                     colorNA = "NA",
+                     breakvals = c(0, 10, 25, 50, 75, 90, 100),
+                     breaknames = c("<10", "10-25", "25-50","50-75","75-90", "90-100"))
+
 
 
 
@@ -58,9 +108,9 @@ plot(r_share_of_total_protein_livestock,
 
 
   # 10% of over (of agr land) croplands AND 10% of over (of agr land) grazing lands
-r_share_of_total_protein_livestock_mixed <-
-  mask(r_share_of_total_protein_livestock,
-       r_gl_cl_share_mixed)
+# r_share_of_total_protein_livestock_mixed <-
+#   mask(r_share_of_total_protein_livestock,
+#        r_gl_cl_share_mixed)
 
 
 
@@ -82,18 +132,21 @@ r_share_of_total_protein_livestock_mixed <-
 # ----------------------- further masked to cl where SI extremely low (below 10)
 
   ## SI below 10 mask -- must also be larger than 0
-SI_5arcmin_range_1to10 <- SI_5arcmin
-SI_5arcmin_range_1to10[SI_5arcmin_range_1to10 >= 10] <- NA
-SI_5arcmin_range_1to10[SI_5arcmin_range_1to10 <= 1] <- NA
+# SI_5arcmin_range_1to10 <- SI_5arcmin # check what "source" row says -- should be rcp rainfed
+# SI_5arcmin_range_1to10[SI_5arcmin_range_1to10 >= 10] <- NA
+# SI_5arcmin_range_1to10[SI_5arcmin_range_1to10 <= 1] <- NA
 
-plot(SI_5arcmin_range_1to10, main = "SI below 10")
-
-
-r_share_of_total_protein_livestock_SIbetween1to10mask <-
-  mask(r_share_of_total_protein_livestock, 
-       SI_5arcmin_range_1to10)
-
-plot(r_share_of_total_protein_livestock_SIbetween1to10mask)
+## 1<=SI<33 
+# SI_5arcmin_range_1to33 <- ifel(SI_5arcmin_range_1to33 >= 1 & SI_5arcmin_range_1to33 < 33, 1, NA)
+# 
+# plot(SI_5arcmin_range_1to33, main = "1<= SI < 33")
+# 
+# 
+# r_share_of_total_protein_livestock_SIbetween1to33mask <-
+#   mask(r_share_of_total_protein_livestock, 
+#        SI_5arcmin_range_1to33)
+# 
+# plot(r_share_of_total_protein_livestock_SIbetween1to33mask)
 
 # SI_5arcmin_below10_croplandmask <- mask(SI_5arcmin_below10, r_fraction_cl_0toNA) # no need to show this - use all agr land instead?
 # plot(SI_5arcmin_below10_croplandmask, main = "SI below 10 on croplands")
@@ -124,7 +177,8 @@ r_protein_combined_kg_ha <-
   r_prot_allcrops_sum_kg_ha_NAto0
 
 r_protein_combined_kg_ha <-
-  mask(r_protein_combined_kg_ha, r_fraction_gl_cl_total_0toNA)
+  mask(r_protein_combined_kg_ha, 
+       r_fraction_gl_cl_total_0toNA) # focus only on our study area
 
 # total combined protein per ha - masked to key cropland areas
 # r_protein_combined_kg_ha_whereover90cl <-
@@ -132,9 +186,9 @@ r_protein_combined_kg_ha <-
 #        r_cl_share_of_agrland_over90)
 
 # total combined protein per ha - masked to mixed areas
-r_protein_combined_kg_ha_wheremixed <-
-  mask(r_protein_combined_kg_ha, 
-       r_gl_cl_share_mixed)
+# r_protein_combined_kg_ha_wheremixed <-
+#   mask(r_protein_combined_kg_ha, 
+#        r_gl_cl_share_mixed)
 
 # total combined protein per ha - croplandmask
 # r_protein_combined_kg_ha_croplandmask <-
@@ -146,11 +200,12 @@ r_protein_combined_kg_ha_wheremixed <-
 #   mask(r_protein_from_AGB_kg_ha$current_herd_str, # could be also r_protein_combined_kg_ha but this is more correct
 #        r_fraction_cl_0toNA, inverse = T)
 
-# further masked to cl where SI extremely low (below 10)
-r_protein_combined_kg_ha_SIbetween1to10mask <-
+# further masked to cl where SI is marginal
+r_protein_combined_kg_ha_SIbetween1to33mask <-
   mask(r_protein_combined_kg_ha,
-       SI_5arcmin_range_1to10)
-plot(r_protein_combined_kg_ha_SIbetween1to10mask)
+       SI_5arcmin_range_1to33)
+
+plot(r_protein_combined_kg_ha_SIbetween1to33mask)
 
 
 
@@ -165,7 +220,7 @@ plot(r_protein_combined_kg_ha_SIbetween1to10mask)
 
 ```{r}
 # Total combined protein
-global(r_protein_combined_kg_perpix, "sum", na.rm = T)/1e9 # 285 mmt
+global(r_protein_combined_kg_perpix, "sum", na.rm = T)/1e9 # 385 in 2020, was 285 mmt in 2010
 
 # Total combined protein on key cropland areas
 # r_protein_combined_kg_perpix_whereover90cl <-
@@ -175,10 +230,10 @@ global(r_protein_combined_kg_perpix, "sum", na.rm = T)/1e9 # 285 mmt
 
 
 # Total combined protein on mixed areas
-r_protein_combined_kg_perpix_wheremixed <-
-  mask(r_protein_combined_kg_perpix, 
-       r_gl_cl_share_mixed)
-global(r_protein_combined_kg_perpix_wheremixed, "sum", na.rm = T)/1e9 # 170
+# r_protein_combined_kg_perpix_wheremixed <-
+#   mask(r_protein_combined_kg_perpix, 
+#        r_gl_cl_share_mixed)
+# global(r_protein_combined_kg_perpix_wheremixed, "sum", na.rm = T)/1e9 # was 170
 
 # Total combined protein on croplands
 # r_protein_combined_kg_perpix_croplandmask <-
@@ -186,21 +241,21 @@ global(r_protein_combined_kg_perpix_wheremixed, "sum", na.rm = T)/1e9 # 170
 #        r_fraction_cl_0toNA)
 # global(r_protein_combined_kg_perpix_croplandmask, "sum", na.rm = T)/1e9 # 281
 
-# Total combined protein on croplands where 1< SI < 10
-r_protein_combined_kg_perpix_SIbetween1to10mask <-
+# Total combined protein on croplands where 1<= SI < 33
+r_protein_combined_kg_perpix_SIbetween1to33mask <-
   mask(r_protein_combined_kg_perpix, 
-       SI_5arcmin_range_1to10)
-global(r_protein_combined_kg_perpix_SIbetween1to10mask, "sum", na.rm = T)/1e9 # 4.3
+       SI_5arcmin_range_1to33)
+global(r_protein_combined_kg_perpix_SIbetween1to33mask, "sum", na.rm = T)/1e9 #55.6
 
 # Total combined protein outside croplands -- this should be same as amount of protein current herd produces outside cl
-# r_protein_combined_kg_perpix_outside_croplands <-
-#     mask(r_protein_combined_kg_perpix, 
-#          r_fraction_cl_0toNA, inverse = T)
-# global(r_protein_combined_kg_perpix_outside_croplands, "sum", na.rm = T)/1e9 # 4
+r_protein_combined_kg_perpix_outside_croplands <-
+    mask(r_protein_combined_kg_perpix,
+         r_fraction_cl_0toNA, inverse = T)
+global(r_protein_combined_kg_perpix_outside_croplands, "sum", na.rm = T)/1e9 # 6.7 -- 4
 
 mask(r_protein_from_AGB_kg_perpix$current_herd_str,
      r_fraction_cl_0toNA, inverse = T) %>% 
-  global(., "sum", na.rm = T)/1e9 # 4
+  global(., "sum", na.rm = T)/1e9 # 6.7 -- was 4
 
 
 
@@ -211,36 +266,26 @@ mask(r_protein_from_AGB_kg_perpix$current_herd_str,
 # Global sums in broader context
 
 ```{r}
-  # combined protein from crops and livestock = 284.8782 mmt. This is 
+  # combined protein from crops and livestock = 385.1329 mmt. This is 
 (1e12 * global(r_protein_combined_kg_perpix, "sum", na.rm = T)/1e9) /
    6869581990 / # persons
   365 
-# 114 g/capita/day
+# 154 --> was114 g/capita/day
 
 
 # how many people can be fed with this?
-((1e12 * global(r_protein_combined_kg_perpix, "sum", na.rm = T)/1e9) / # grams (mmt = 1e9 kg)
-  (1000* foodBalanceSheets_semiraw %>% filter(Area == "World", Item == "Population") %>% pull(Y2010)) / # persons
-  365 ) /# days in a year
-  (0.8*70) # protein need
-# 203
+#((1e12 * global(r_protein_combined_kg_perpix, "sum", na.rm = T)/1e9) / # grams (mmt = 1e9 kg)
+
+# ((1000 * global(r_protein_combined_kg_perpix, "sum", na.rm = T)) / # grams of protein produced
+#   (1000* foodBalanceSheets_semiraw %>% filter(Area == "World", Item == "Population") %>% pull(Y2020)) / # number of persons in 2020
+#   365 ) /# days in a year
+#   (0.8*70) # protein need in 
+# 
 
 ```
 
 
-# Example plot
 
-```{r}
-pal_share <-  scico(n = 10, palette = "roma", begin = 0.1, end = 0.9, direction = -1) # change name?
-create_index_map(r_index = r_share_of_total_protein_livestock_mixed , 
-                     tocrs = "ESRI:54030",
-                     index_main_title = "Share of livestock MIXED",
-                     index_label = "[%]",
-                     colorpal = pal_share,
-                     colorNA = "NA",
-                     breakvals = c(0, 10, 25, 50, 75, 90, 100),
-                     breaknames = c("<10", "10-25", "25-50","50-75","75-90", "90-100"))
-```
 
 # Save rasters
 
@@ -254,9 +299,9 @@ writeRaster(r_protein_combined_kg_ha,
 #             filename = here("Data", "Intermediate_input", "r_protein_combined_kg_ha_whereover90cl.tif"),
 #             overwrite = TRUE)
 
-writeRaster(r_protein_combined_kg_ha_wheremixed,
-            filename = here("Data", "Intermediate_input", "r_protein_combined_kg_ha_wheremixed.tif"),
-            overwrite = TRUE)
+# writeRaster(r_protein_combined_kg_ha_wheremixed,
+#             filename = here("Data", "Intermediate_input", "r_protein_combined_kg_ha_wheremixed.tif"),
+#             overwrite = TRUE)
  
 writeRaster(r_protein_combined_kg_perpix,
             filename = here("Data", "Intermediate_input", "r_protein_combined_kg_perpix.tif"),
@@ -266,8 +311,8 @@ writeRaster(r_protein_combined_kg_perpix,
 # writeRaster(r_protein_combined_kg_ha_croplandmask,
 #             filename = here("Data", "Intermediate_input", "r_protein_combined_kg_ha_croplandmask.tif"),
 #             overwrite = TRUE)
-writeRaster(r_protein_combined_kg_ha_SIbetween1to10mask,
-            filename = here("Data", "Intermediate_input", "r_protein_combined_kg_ha_SIbetween1to10mask.tif"),
+writeRaster(r_protein_combined_kg_ha_SIbetween1to33mask,
+            filename = here("Data", "Intermediate_input", "r_protein_combined_kg_ha_SIbetween1to33mask.tif"),
             overwrite = TRUE)
 
 
@@ -278,13 +323,13 @@ writeRaster(r_share_of_total_protein_livestock,
 # writeRaster(r_share_of_total_protein_livestock_croplandmask,
 #             filename = here("Data", "Intermediate_input", "r_share_of_total_protein_livestock_croplandmask.tif"),
 #             overwrite = TRUE)
-writeRaster(r_share_of_total_protein_livestock_mixed,
-            filename = here("Data", "Intermediate_input", "r_share_of_total_protein_livestock_mixed.tif"),
-            overwrite = TRUE)
+# writeRaster(r_share_of_total_protein_livestock_mixed,
+#             filename = here("Data", "Intermediate_input", "r_share_of_total_protein_livestock_mixed.tif"),
+#             overwrite = TRUE)
 
 
-writeRaster(r_share_of_total_protein_livestock_SIbetween1to10mask,
-            filename = here("Data", "Intermediate_input", "r_share_of_total_protein_livestock_SIbetween1to10mask.tif"),
+writeRaster(r_share_of_total_protein_livestock_SIbetween1to33mask,
+            filename = here("Data", "Intermediate_input", "r_share_of_total_protein_livestock_SIbetween1to33mask.tif"),
             overwrite = TRUE)
 
 
