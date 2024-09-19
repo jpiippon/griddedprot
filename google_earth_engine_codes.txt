@@ -1,0 +1,300 @@
+Google Earth Engine Codes:
+
+
+
+////////////////////////////////////////////////////// MCD (Land Cover Types)
+var i;
+for (i = 2001; i <= 2020; i++) { 
+var LC = ee.ImageCollection('MODIS/061/MCD12Q1') // changed to 061
+.select('LC_Type1')
+.filterDate((i+"-01-01"),(i+"-12-31")) 
+.mode(); 
+ print("LC" + i, LC);
+
+
+var bounds = ee.Geometry.Rectangle([-179.999,-89.999, 180, 90],'EPSG:4326',false); //a geometry
+var modis = LC; //projection we use for output maps
+var modisProjection = modis.projection(); // Get information about the MODIS projection.
+var LC_clipped = LC.clip(bounds);
+
+var igbpLandCoverVis = {
+  min: 1.0,
+  max: 17.0,
+  palette: [
+    '05450a', '086a10', '54a708', '78d203', '009900', 'c6b044', 'dcd159',
+    'dade48', 'fbff13', 'b6ff05', '27ff87', 'c24f44', 'a5a5a5', 'ff6d4c',
+    '69fff8', 'f9ffa4', '1c0dff'
+  ],
+};
+Map.addLayer(LC_clipped, igbpLandCoverVis, 'IGBP Land Cover');
+
+
+////////////////////////////////////////////////////////   Export
+Export.image.toDrive({
+  image: LC_clipped.toFloat(),
+  description: "MCDv061_extent_in_" + i,
+  scale: 500,
+  region: bounds,
+  maxPixels:1e13,
+  folder: 'GEE_MCD12Q1', 
+});
+} 
+
+
+// Select only values 6-10 and give them new value 1, otherwise zero
+//var ReclassifiedLC = LC.remap([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17],
+//          [0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0]);
+// Map.addLayer(ReclassifiedLC.mask(ReclassifiedLC), {palette: ['000000', '00FF00'], max: 1},'Grasslands' + i);
+// print("ReclassifiedLC" + i, ReclassifiedLC);
+//Reclassified_clipped_LC = ReclassifiedLC.clip(bounds);
+// print("Reclassified_clipped_LC" + i, Reclassified_clipped_LC);
+// Define bounds, projection and mask
+
+//Map.addLayer(Reclassified_clipped_LC, {}, "Reclassified_clipped_LC" + i);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//////// Vegetation continuous fields
+// years to process (from start year t0 to end year t1)
+var t0 = "2001";
+var t1 = "2020"; 
+
+// bounds
+var bounds = ee.Geometry.Rectangle([-179.999,-89.999, 180, 90],'EPSG:4326',false);  
+//var bounds = ee.Geometry.Rectangle([22, 60, 31, 70], 'EPSG:4326', false) ; // good for practising 
+
+
+// data for ensuring that we have the same projection for all MODIS products
+var LC = ee.ImageCollection('MODIS/006/MCD12Q1')
+.select('LC_Type1')
+.filterDate(t0.concat("-01-01"),t1.concat("-12-31"))
+.mode(); 
+var modis = LC; //projection we use for output maps
+var modisProjection = modis.projection(); // Get information about the MODIS projection.
+
+
+
+var MOD44B = ee.ImageCollection('MODIS/006/MOD44B')
+.select('Percent_Tree_Cover')
+.filterDate(t0.concat("-01-01"),t1.concat("-12-31"));
+print(MOD44B);
+
+var visualization = {
+  bands: ['Percent_Tree_Cover'],
+  min: 0.0, max: 100.0,  palette: ['bbe029', '0a9501', '074b03']
+};
+//Map.addLayer(MOD44B, visualization, 'Percent Tree Cover');
+
+
+//var MOD44Bdata_list = MOD44B.toList(MOD44B.size());
+//print(MOD44Bdata_list);
+//var MOD44Bsize = MOD44Bdata_list.size().getInfo();
+//print(MOD44Bsize);
+
+
+
+var collection_list = MOD44B.toList(MOD44B.size()); 
+var size = collection_list.size().getInfo();
+print(size);
+
+
+var i;
+for (i = 0; i < size; i++) {
+  var image = ee.Image(collection_list.get(i));
+  var date = ee.Date(image.get('system:time_start')).format('YYYY');
+  date = date.getInfo();
+
+
+// Reclassify values (for all 16 layers). Create 3 variables: for each TreeCoverMultiplier curves
+var reclassifiedForest0025 = image.expression('b(0) == 0 ? 1 : b(0) <= 5 ? 0.75 : b(0) <= 10 ? 0.57 : b(0) <= 20 ? 0.32 : b(0) <= 40 ? 0.10 : b(0) <= 60 ? 0.03 : 0.00');
+
+var reclassifiedForestMedian = image.expression('b(0) == 0 ? 1 : b(0) <= 5 ? 0.80 : b(0) <= 10 ? 0.64 : b(0) <= 20 ? 0.41 : b(0) <= 40 ? 0.17 : b(0) <= 60 ? 0.07 : 0.01');
+
+var reclassifiedForest095 = image.expression('b(0) == 0 ? 1 : b(0) <= 5 ? 0.83 : b(0) <= 10 ? 0.68 : b(0) <= 20 ? 0.47 : b(0) <= 40 ? 0.22 : b(0) <= 60 ? 0.10 : 0.02');
+
+
+// Reproject to MODIS projection       EDIT done for all 3 variables defined above
+var forest0025 = reclassifiedForest0025
+      // Request the data at the scale and projection of the MODIS image.
+    .reproject({
+      crs: modisProjection, // defined earier
+      scale: 500
+    })
+    // Force the next reprojection to aggregate instead of resampling.
+    .reduceResolution({ // 
+      reducer: ee.Reducer.mean(),
+      maxPixels: 1024,
+      bestEffort:true
+    });
+
+forest0025 = forest0025.clip(bounds); // defined earlier
+
+
+
+// Median
+var forestMedian = reclassifiedForestMedian
+    .reproject({
+      crs: modisProjection, 
+      scale: 500
+    })
+    .reduceResolution({ 
+      reducer: ee.Reducer.mean(),
+      maxPixels: 1024,
+      bestEffort:true
+    });
+
+forestMedian = forestMedian.clip(bounds); 
+
+
+
+// 095
+var forest095 = reclassifiedForest095
+    .reproject({
+      crs: modisProjection, 
+      scale: 500
+    })
+    .reduceResolution({ 
+      reducer: ee.Reducer.mean(),
+      maxPixels: 1024,
+      bestEffort:true
+    });
+
+forest095 = forest095.clip(bounds); 
+
+
+// stack
+var stacked = forest0025.addBands(forestMedian); // layers to be exported. 
+var all_three_forest_layers = stacked.addBands(forest095); 
+
+
+// Export:
+Export.image.toDrive({
+  image: all_three_forest_layers.toFloat(), 
+  description: "MOD44B"  + date,
+  fileNamePrefix: 'MOD44B' + date,
+  scale: 500,
+  folder: 'MOD44B',
+  region: bounds,
+  maxPixels:1e13
+});
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+///////////////////////////////////////////////////// NPP for 2001-2021. Year 2000 is incomplete
+// years to process (from start year t0 to end year t1)
+var t0 = "2001"; // for mode uneven-length period is better (mode works better when uneven numbers. I.e 9, 9, 9, 8, 8, 8 --> GEE thinks mode is 9)
+var t1 = "2021"; 
+
+ var LC = ee.ImageCollection("MODIS/061/MCD12Q1") // VERSION 061
+ .select('LC_Type1')
+ .filterDate(t0.concat("-01-01"),t1.concat("-12-31"))
+ .mode(); // mode is better than median
+
+ print(LC);
+ //Select only values 6,7 8 9 and 10 and give them new value 1, otherwise zero
+ var ReclassifiedLC = LC
+ .remap([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17],
+            [0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0]); // shrublands too!
+
+ Map.addLayer(ReclassifiedLC.mask(ReclassifiedLC), {palette: ['000000', '00FF00'], max: 1},'Grasslands');
+ print(ReclassifiedLC);
+
+
+// Define bounds, projection and mask
+var bounds = ee.Geometry.Rectangle([-179.999,-89.999, 180, 90],'EPSG:4326',false); //a geometry 
+//var bounds = ee.Geometry.Rectangle([22, 60, 31, 70], 'EPSG:4326', false) ; // good for practising
+var modis = LC; //projection we use for output maps
+var modisProjection = modis.projection(); // Get information about the MODIS projection.
+var mask = ReclassifiedLC.eq(1); // mask: data only for areas where MCD equals shrublands, savannas, woody savannas or grasslands
+
+print(modisProjection);
+
+
+
+
+////////////////////////////////////////////////////// NPP VERSION 061
+var visualization = {bands: ['Npp'], min: 0.0, max: 19000.0, palette: ['bbe029', '0a9501', '074b03']};
+
+var NPPdata = ee.ImageCollection('MODIS/061/MOD17A3HGF').select('Npp'); // !!! 061Change version if needed!
+print(NPPdata);// here you will see that there is only one raster for each year, so I think it is not necessary to do the following procedures to get every year. I commented them out below
+
+var NPPdata_list = NPPdata.toList(NPPdata.size());
+print(NPPdata_list);
+var NPPsize = NPPdata_list.size().getInfo();
+print(NPPsize);
+
+for (var i=0; i<NPPsize; i++) {  
+  var NPPimage = ee.Image(NPPdata_list.get(i));
+  var date = ee.Date(NPPimage.get('system:time_start')).format('YYYY');
+  date = date.getInfo();
+  
+// crop -------------------- do not mask here
+var cropped_NPPimage =  NPPimage.clip(bounds);
+cropped_NPPimage = cropped_NPPimage.reproject({
+      crs: modisProjection,
+      scale: 500
+    });
+
+Map.addLayer(cropped_NPPimage, visualization, 'NPP ' + date);
+// crop and mask
+//var masked_NPPimage = NPPimage.updateMask(mask); 
+//masked_NPPimage = masked_NPPimage.clip(bounds);
+//masked_NPPimage = masked_NPPimage.reproject({
+//      crs: modisProjection,
+//      scale: 500
+//    });
+
+//Map.addLayer(masked_NPPimage, visualization, 'NPP ' + date);
+
+
+  Export.image.toDrive({
+    image: cropped_NPPimage,   //masked_NPPimage, // use this if you want to do masking here
+    description: 'NPP' + date,
+    fileNamePrefix: 'NPP' + date,
+    folder: 'GEE_NPP',
+    scale: 500,
+    region: bounds,
+   maxPixels: 1e13,
+  });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   

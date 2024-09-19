@@ -1,0 +1,313 @@
+---
+title: "Exploring HYDE grasslands"
+author: "Johannes Piipponen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+#  Get HYDE data for 
+- converted rangelands
+- grazing
+- pastures
+- rangelands 
+
+
+grazing<yr>.asc    	(total land used for grazing, in km2 per grid cell), after 1960 identical to FAO's category 'Permanent Pasture'.
+
+pasture<yr>.asc    	(total pasture area, in km2 per grid cell), defined as Grazing land with an aridity index > 0.5, assumed to be more intensively managed.(converted in climate models)
+
+rangeland<yr>.asc  	(total rangeland area, in km2 per grid cell), defined as Grazing land with an aridity index < 0.5, assumed to be less or not managed.(not converted in climate models)
+
+conv_rangeland<yr>.asc (total converted rangeland area, in km2 per grid cell), defined as rangeland being placed on a potential forest area, and thus being converted in climate models.
+
+
+# ----------------------- !!! muutokset 19.4.2020
+- muutettiin vuoden HYDE 3.2:sta (vuosi 2010) HYDE 3.33 ja vuoden 2020 dataan 
+- Muutettiin AGB 5y_med ja käytettiin vain vuoden 2020 arvoa
+
+```{r}
+# Using HYDE 3.3
+f_hyde_landuse_to_raster <- function(landuse) {
+  list.files(path = here("Data", "HYDE", "HYDE3.3", "input"),
+             pattern= paste0(landuse, 2020),
+             full.names = TRUE) } %>%
+  rast()
+
+
+
+# all with one function --> practise with year 2010 (yr2017 is the newest)
+# f_hyde_landuse_to_raster <- function(landuse) {
+#   list.files(path = here("Data", "HYDE", "HYDE3.2", "Baseline", "zip"),
+#              pattern= paste0(landuse, 2010), 
+#              full.names = TRUE) } %>% 
+#   rast()
+
+
+f_hyde_landuse_to_raster("rangeland") # 2layers conv_rangelands and rangelands
+plot(f_hyde_landuse_to_raster("rangeland"))
+plot(f_hyde_landuse_to_raster("pasture"))
+
+
+r_landuse2020 <- 
+  lapply(c("grazing", "pasture", "rangeland"),
+         f_hyde_landuse_to_raster) %>% 
+  rast()
+
+
+r_landuse2020 %>% plot() # grazing = pasture + rangeland + conv_rangeland
+# rangeland = dry, pasture = not so dry 
+# (index increases with wetter conditions)
+plot(r_landuse2020$grazing2020AD, main = "grazing land km2 perpix")
+
+# resample grazinglands2020
+grazinglands2020 <- resample(r_landuse2020$grazing2020AD, template_rast_5arcmin)
+plot(grazinglands2020)
+
+
+# writeRaster(grazinglands2010, filename =
+#               here("Data", "Hyde", "grazinglands2010_km2perpix_5arcmin.tif"))
+
+# compare with 2010 grazing lands
+grazinglands2010 <- here("Data", "Hyde", "grazinglands2010_km2perpix_5arcmin.tif") %>% rast()
+plot(grazinglands2010)
+
+```
+
+
+
+# Calculate fraction of HYDE grazing land in a cell
+
+In this study we refer to grazing lands which means "grazing" in this context. Note that
+grazing = pasture + rangeland + conv_rangeland
+
+```{r}
+r_fraction_hyde_grazing_lands <- 
+  (grazinglands2020 /
+     cellSize(grazinglands2020, unit = "km"))
+plot(r_fraction_hyde_grazing_lands, main = "fraction of cell that's HYDE grazing lands")
+
+
+r_fraction_hyde_grazing_lands_0toNA <- 
+  classify(r_fraction_hyde_grazing_lands, cbind(0,NA))
+
+
+writeRaster(r_fraction_hyde_grazing_lands, filename =
+              here("Data", "HYDE", "HYDE3.3", "output",  "fraction_of_cell_that_is_hyde_grazingland2020.tif"),
+            overwrite = T) # was only "Hyde", "fraction..."
+
+writeRaster(r_fraction_hyde_grazing_lands_0toNA, filename =
+              here("Data", "HYDE", "HYDE3.3", "output",  "fraction_of_cell_that_is_hyde_grazingland2020_0toNA.tif"),
+            overwrite = T)
+
+
+
+
+
+
+
+##################################### get file
+r_fraction_hyde_grazing_lands_0toNA <-
+  here("Data", "HYDE", "HYDE3.3", "output", 
+       "fraction_of_cell_that_is_hyde_grazingland2020_0toNA.tif") %>% 
+  rast()
+
+```
+
+
+# Get and process simulated AGB data
+
+- Calculate median AGB over 2008-2012 --> update: if we use year 2020, we don't need to take median
+- Mask to HYDE grazing lands
+
+```{r}
+# Get simulated AGB data
+AGB_simulated <- 
+  here("Data", "AGB", "5arcmin","Simulated", 
+       "simulation_results_where_igbp6to10or16gl_every_year_2001_2020_5arcmin_AGBunit_kg_ha_n1000.tif") %>% 
+  rast()
+
+AGB_2020 <- 
+  resample(AGB_simulated$agb_med_2020, template_rast_5arcmin) # unit kg/ha
+
+plot(AGB_2020)
+
+
+# -------------------------------------------------------- uncomment if using y2010
+  # convert to df
+# df_sim <-   AGB_simulated %>%
+#   as.data.frame(., xy = T) %>%
+#   as_tibble()
+# 
+# # agb_med_vars_2001_2020 <- df_sim %>%
+# #   dplyr::select(matches("agb_med"))
+# 
+# 
+#   ## calculate 5 years median for AGB
+# agb_med_vars <- df_sim %>%
+#   dplyr::select(agb_med_2008,agb_med_2009,agb_med_2010, agb_med_2011,agb_med_2012)
+# 
+# 
+# r_agb_5y_med_kg_ha <- agb_med_vars %>%
+#   mutate(agb_med_median = rowMedians(as.matrix(agb_med_vars),na.rm = TRUE)) %>%
+#   bind_cols(df_sim %>% dplyr::select(x,y)) %>%
+#   dplyr::select(x,y, agb_med_median) %>%
+#   rast(., type = "xyz", crs = "EPSG:4326") %>%
+#   resample(., template_rast_5arcmin)
+# 
+# 
+# 
+# # mask to HYDE grazing lands (gl)
+# r_agb_5y_med_in_hyde_gl_kg_ha <- 
+#   mask(r_agb_5y_med_kg_ha, 
+#        r_fraction_hyde_grazing_lands_0toNA)
+
+# mask to HYDE grazing lands (gl)
+r_agb_2020_in_hyde_gl_kg_ha <- 
+  mask(AGB_2020, 
+       r_fraction_hyde_grazing_lands_0toNA)
+
+
+plot(r_agb_2020_in_hyde_gl_kg_ha, 
+     main = "AGB in 2020 kg ha in HYDE grazing lands")
+
+
+
+writeRaster(r_agb_2020_in_hyde_gl_kg_ha, filename = 
+              here("Data", "AGB", "5arcmin", "Simulated",
+                   "AGB2020_withIGPB6to10or16_in_hydeareas_kg_ha_5arcmin.tif"),
+            overwrite = T)
+
+
+# mask simulated AGB data to HYDE grazing land --> for every year 2001 - 2020
+# <matching_layers <- grep("agb_med", names(AGB_simulated))
+# 
+# # Valitaan nämä kerrokset käyttäen subset-funktiota
+# AGB_med_subset <- subset(AGB_simulated, matching_layers)
+# AGB_med_subset <- resample(AGB_med_subset, 
+#                            template_rast_5arcmin)
+# 
+# AGB_med_subset_maskedtoHYDE_kg_ha <- 
+#   mask(AGB_med_subset, 
+#        r_fraction_hyde_grazing_lands_0toNA)
+# 
+# 
+# writeRaster(AGB_med_subset_maskedtoHYDE_kg_ha, filename = 
+#               here("Data", "AGB", "5arcmin", "Simulated",
+#                    "2001_2020_AGB_withIGPB6to10or16_in_hydeareas_kg_ha_5arcmin.tif"),
+#             overwrite = T)
+
+################################### get file
+r_agb_2020_in_hyde_gl_kg_ha <-
+  here("Data", "AGB", "5arcmin", "Simulated",
+       "AGB2020_withIGPB6to10or16_in_hydeareas_kg_ha_5arcmin.tif") %>% 
+  rast()
+
+```
+ 
+ 
+# Compare: fraction of grazing land in HYDE dataset and in input mcd data
+ 
+In comparison to HYDE, We used more precise input data for land cover to avoid potential bias in AGB estimations (see Methods). We will use r_fraction_hyde_grazing_lands when estimating how large fraction of a cell is used for grazing. This is urgent as we concentrate on existing grazing land areas. However, it is interesting to compare how close this is to mcd land cover estimates that rely on 500m IGBP classifications.
+
+
+```{r}
+# get fraction of gl based on 500m MODIS mcd 
+r_fraction_gl_0toNA_igbp6to10or16 <- 
+  here("Data", "MODIS", "MCD", "v061_output",
+       "mcd_fraction_of_gl0toNA_in_cell_where_igbp6to10or16_2001_2020_5arcmin.tif") %>% 
+  rast()
+
+
+r_fraction_gl_0toNA_igbp6to10or16_hydemask <-
+  mask(r_fraction_gl_0toNA_igbp6to10or16, 
+       r_fraction_hyde_grazing_lands_0toNA)
+
+# plot
+plot(r_fraction_gl_0toNA_igbp6to10or16, main = "MODIS IGBP 6to10or16 grazing land fraction")
+plot(r_fraction_hyde_grazing_lands_0toNA,
+     main = "HYDE grazing land fraction")
+plot(r_fraction_gl_0toNA_igbp6to10or16_hydemask, 
+     main = "MODIS based grazing land fraction in HYDE areas(fraction with some of IGBP6to10or16 every year")
+
+
+# mask hyde grazing lands to IGBP areas ----------------- this should be r_fraction_gl ?!
+r_fraction_hyde_grazing_lands_masked_to_MODIS_IGBP_areas_0toNA <-
+  mask(r_fraction_hyde_grazing_lands_0toNA, 
+       r_fraction_gl_0toNA_igbp6to10or16)
+
+plot(r_fraction_hyde_grazing_lands_masked_to_MODIS_IGBP_areas_0toNA, 
+     main = "HYDE grazing lands fraction masked to MODIS 6to10or16 IGBP areas")
+
+
+writeRaster(r_fraction_hyde_grazing_lands_masked_to_MODIS_IGBP_areas_0toNA,
+              here("Data", "HYDE", "HYDE3.3", "output", # was "Hyde" before
+       "r_fraction_hyde_grazing_lands_masked_to_MODIS_IGBP_areas_0toNA.tif"),
+       overwrite = T)
+
+
+# Find areas where there is HYDE grazing land but not IGBP based grazing land
+# check if there are areas where AGB is not calculated
+agb_data_gaps<- 
+  mask(r_fraction_hyde_grazing_lands_0toNA, 
+       r_fraction_gl_0toNA_igbp6to10or16_hydemask, 
+       inverse =T)
+plot(agb_data_gaps, main = "Sim AGB data missing -- e.g. US corn belt") 
+# we need to use nearest neighbour method or some other method to fill these data gaps. Otherwise we cannot estimate amount of grazing-based protein on these regions
+
+
+
+
+# -------------------------------------------- calculate study area
+# hyde
+
+global((cellSize(r_fraction_hyde_grazing_lands_0toNA, unit = "ha")*r_fraction_hyde_grazing_lands_0toNA ),
+         "sum", na.rm = T)/1e6 # 3206 mha in 2020 --> was 3253.434	) 3.25 billion hectares
+
+
+global((cellSize(r_fraction_gl_0toNA_igbp6to10or16_hydemask, unit = "ha")*r_fraction_gl_0toNA_igbp6to10or16_hydemask ),
+         "sum", na.rm = T)/1e6 # 5563 mha in 2020 --> was  5473.969 = 5.47 billion ha !! but the fraction of grazing lands should be based on HYDE
+
+
+global((cellSize(r_fraction_gl_0toNA_igbp6to10or16, unit = "ha")*r_fraction_gl_0toNA_igbp6to10or16 ),
+         "sum", na.rm = T)/1e6 # Broadest, purely MODIS based: 8 billion hectares in 2020
+
+global((cellSize(r_fraction_hyde_grazing_lands_masked_to_MODIS_IGBP_areas_0toNA, unit = "ha")*
+          r_fraction_hyde_grazing_lands_masked_to_MODIS_IGBP_areas_0toNA ),
+         "sum", na.rm = T)/1e6 # 3152 mha in 2020 -->  3195.331	 = 3.20 billion hectares
+
+
+# test with data gaps data
+global((cellSize(agb_data_gaps, unit = "ha")*agb_data_gaps ),
+         "sum", na.rm = T)/1e6 # 54 mha in 2020 -->  58.10321	 = 58 million ha
+
+
+
+
+```
+ 
+ 
+# How much total AGB would be without HYDE integration
+
+```{r}
+plot(AGB_2020, main = "AGB 2020")
+plot(r_fraction_gl_0toNA_igbp6to10or16, main = "r_fraction_gl_0toNA_igbp6to10or16")
+
+
+AGB_2020_no_HYDE_kg_perpix <- 
+  AGB_2020 * 
+  cellSize(r_fraction_gl_0toNA_igbp6to10or16, unit = "ha") *
+  r_fraction_gl_0toNA_igbp6to10or16
+
+# global sums
+global(1000*AGB_2020_no_HYDE_kg_perpix, "sum", na.rm = T)/1e15 #  3.37 Pg -- includes PUF
+
+# save raster to here("Delete")
+writeRaster(AGB_2020_no_HYDE_kg_perpix,
+            here("Delete",
+                 "AGB2020_no_HYDE_kg_perpix.tif"),
+            overwrite = T)
+
+
+```
+
+ 

@@ -1,0 +1,1010 @@
+---
+title: "2nd_input_data_processing.Rmd"
+author: "Johannes Piipponen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+Abbreviations
+gl = grazing lands
+
+
+
+
+# MCD
+More spesifically MCD12Q1.061 (version 6.1)
+
+Includes IGBP classes: 
+
+
+See: 
+https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MCD12Q1#description
+or
+
+
+```{r}
+# Function to get MCD raster files for a specific year
+rastlist_mcd_year <- function(year) {
+  list.files(path = here("Data", "MODIS", "MCD", "v061_from_GEE"), 
+             pattern= paste0("MCDv061_extent_in_", year), 
+             full.names = TRUE) }
+
+rastlist_mcd_year("2001") #check 
+
+
+
+# Function to create a raster based on a raster list and merge tiles to cover the globe
+f_merge_year_mcd <- function(year) {
+  lapply(rastlist_mcd_year(year), rast) %>% # convert list to raster
+  sprc() %>% # Create a SpatRasterCollection from the raster list
+  merge(.,   # Merge rasters into a single raster
+        filename = paste0(here("Data", "MODIS", "MCD", "v061_processed"),
+                          "/mcd_merged_",
+                        year ,".tif"),
+        names = paste0("mcd", year),
+        datatype = "INT1U") 
+}
+
+
+# Run the merge function for each year (2001-2020)
+tic()
+sapply(timestep_2001_2020 , f_merge_year_mcd) # 2h total
+toc() 
+
+
+
+# Create a raster stack from the merged TIF files
+mymergedfiles_mcd <- list.files(path = here("Data", "MODIS", "MCD", "v061_processed"),
+                            pattern="mcd_merged_",
+                            full.names=TRUE)
+mymergedfiles_mcd
+
+mcd_merged <- rast(mymergedfiles_mcd) # no any kind of mask here!
+
+
+
+# Create a reclassification matrix to change values 6, 7, 8, 9, 10 and 16 to 1 and all other values to NA
+rclmat_mcd_igbp6to10or16 <- 
+  matrix(c(6, 10, 1,# Values from 6 to 10 will become 1
+           16, 16, 1),# Values of 16 will become 1
+           ncol = 3, byrow = TRUE)
+
+
+# Classify the mcd raster using the reclassification matrix
+mcd_igbp6to10or16_gets_val_1_otherwise_NA <-
+  classify(mcd_merged,
+           rclmat_mcd_igbp6to10or16, 
+           right = NA, # close both sides with right=NA. Only meaningful with "from-to-becomes" classification with integers.
+           others = NA, # all values that are not matched are set to this value 
+           filename = here("Data", "MODIS", "MCD", "v061_processed",
+                           "mcd_igbp_6to10or16_gets_val_1_otherwiseNA.tif"),
+           overwrite = T) # 30min
+
+
+
+
+# Replace 0 values with NA in the raster stack. Then, find cells where there is at least one NA during the time period
+
+
+
+# Create a raster mask with NA values where any year has an NA value. In other words:
+# calculate sum of mcd_igbp_6to10_gets_val1_otherwiseNA using na.rm = F. This returns a raster where cell get NA value if any of the years has NA value in that cell. This mask is used to find cells that belong to some IGBP class 6-10 every year. E.g. cell 5,6,7,NA,6,6...,7 becomes NA
+
+ # this retrieves 1 layer we use for masking
+# mcd_gl_every_year_mask_1_or_NA <- 
+#   sum(mcd_igbp_6to10_gets_val_1_otherwise_NA, na.rm = FALSE,
+#       filename = here("Data", "MODIS", "MCD", "v061_processed",
+#                       "mcd_sum_2001_2020_na.rm_FALSE.tif"), 
+#       overwrite = T) # 10min
+
+
+mcd_igbp6to10or16_every_year_1_or_NA_1lyr_mask <- 
+  sum(mcd_igbp6to10or16_gets_val_1_otherwise_NA, na.rm = FALSE,
+      filename = here("Data", "MODIS", "MCD", "v061_output",
+                      "mcd_sum_igbp6to10or16_2001_2020_na.rm_FALSE.tif"), 
+      overwrite = T) # 10min
+
+
+#################################### get the file
+mcd_igbp6to10or16_every_year_1_or_NA_1lyr_mask <- 
+   here("Data", "MODIS", "MCD", "v061_output",
+        "mcd_sum_igbp6to10or16_2001_2020_na.rm_FALSE.tif") %>%  
+  rast() # actualy gets value 20 or NA (sum of 20 years)
+
+mcd_igbp6to10or16_every_year_1_or_NA_1lyr_mask
+
+plot(mcd_igbp6to10or16_every_year_1_or_NA_1lyr_mask,
+     main = "1lyr showing where there is igbp6to10or16 every year 2001-2020")
+#################################### get the file
+
+
+```
+
+
+# Fraction of grazing land within each 5 arc-minutes cell ---------------------------- poista turhat jutut täältä
+
+The raster we created above gets value 1 if there are some of the IGPB classes 6to10 or 16 every year 2001-2020. Otherwise it gets value NA.
+No we convert NA to 0 and aggregate and resample the raster to 5arcmin. This reveals how large fraction of cell is covered by grazing lands
+
+```{r}
+
+
+# Aggregate and resample the binary grazing land raster to 5 arc-minutes resolution
+# This results in a raster representing the fraction of grazing land within each 5 arc-minutes cell
+# Create a reclassification matrix for values greater than 1 to become 1
+rclmat1toInf1 <- matrix(c(1, Inf, 1), ncol = 3, byrow = TRUE)
+# Classify the mcd_gl_every_year_mask raster using the reclassification matrix (ifel would work too)
+# same as mcd0_1_sum <- mcd0_to_na_sum; mcd0_1_sum[mcd0_1_sum > 1] <- 1; mcd0_1_sum <- classify(mcd0_1_sum, cbind(NA, 0))
+
+
+
+mcd_0or1_sum_igbp6to10or16 <- 
+  classify(mcd_igbp6to10or16_every_year_1_or_NA_1lyr_mask, 
+           rclmat1toInf1, 
+           include.lowest = TRUE, 
+           others = 0)
+
+mcd_0or1_sum_igbp6to10or16 <- # just in case the previous one leaves NAs anyways
+  classify(mcd_0or1_sum_igbp6to10or16, cbind(NA, 0))
+
+
+
+
+r_fraction_gl_0toNA_igbp6to10or16  <- 
+  aggregate(mcd_0or1_sum_igbp6to10or16, fact = 18, na.rm = T) %>%
+  resample(., template_rast_5arcmin) %>% 
+  classify(., cbind(0, NA), 
+           filename = here("Data", "MODIS", "MCD", "v061_output",
+                          "mcd_fraction_of_gl0toNA_in_cell_where_igbp6to10or16_2001_2020_5arcmin.tif"),
+                          overwrite = T)
+
+
+# Calculate land area in 2010
+# r_of_areas <- cellSize(mcd0_to_na$mcd2010, unit = "km") 
+# mcd_area_2010 <- global(r_of_areas, fun = "sum", na.rm = T) 
+# mcd_area_2010  / (148940000 - 14200000)  # XX% of total land area (excluding antarctica)
+# 
+# # Calculate the total land area when land usage is always IGBP 6to10or16 
+r_of_study_area <- cellSize(mcd_igbp6to10or16_every_year_1_or_NA_1lyr_mask, unit = "km") *
+  mcd_igbp6to10or16_every_year_1_or_NA_1lyr_mask
+mcd_area_always_gl <-  global(r_of_study_area, fun = "sum", na.rm = T) #  M km2
+mcd_area_always_gl  / (148940000 - 14200000)  # % of total land area (excluding antarctica)
+
+
+
+#################################### get the file
+r_fraction_gl_0toNA_igbp6to10or16 <- 
+  here("Data", "MODIS", "MCD", "v061_output",
+       "mcd_fraction_of_gl0toNA_in_cell_where_igbp6to10or16_2001_2020_5arcmin.tif") %>% 
+  rast()
+#################################### get the file
+
+
+```
+
+
+
+
+
+# Net Primary Productivity (NPP) 
+More spesifically MOD17A3HGF.061 (version 6.1)
+
+See:
+https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MOD17A3HGF?hl=en
+
+```{r}
+# Function that get rasterlist for different years
+rastlist_npp_year <- function(year) {
+  list.files(path = here("Data", "MODIS", "NPP", "v061_from_GEE"),
+             pattern= paste0("NPP", year), 
+             full.names = TRUE) }
+
+rastlist_npp_year("2001") #check 
+
+
+f_merge_year_npp <- function(year) {
+  lapply(rastlist_npp_year(year), rast) %>% # convert list to raster
+  sprc() %>% # make a SpatRasterCollection from a list
+  merge(.,
+        filename = paste0(here("Data", "MODIS", "NPP", "v061_processed"),
+                          "/npp_merged_",
+                        year ,".tif"),
+        names = paste0("npp", year)) #merge
+}
+
+
+##f_merge_year_npp("2001") # test for 2001
+tic()
+sapply(timestep_2001_2020 , f_merge_year_npp) # this takes a lot of time
+toc() #90min
+
+
+
+mymergedfiles_npp <- list.files(path =
+                                  here("Data", "MODIS", "NPP", "v061_processed"),
+                            pattern="npp_merged_",
+                            full.names=TRUE)
+mymergedfiles_npp
+npp_nomask <- rast(mymergedfiles_npp) 
+
+
+
+
+# writeRaster(npp_nomask, 
+#             filename = here("Data", "MODIS", "NPP", "v061_output",
+#                             "npp_kgC_ha_2001_2020_nomask.tif"),
+#             overwrite = T)
+
+
+
+
+
+ # mask
+# ! Important note: The NPP data downloaded from GEE had a scaling factor of 0.0001 and the unit was kg*C/m^2.
+# Therefore, it should be multiplied by 0.0001 to get the unscaled NPP. However, as we want NPP in the unit kg*C/ha, we should again multiply by 10000 to convert from m^2 to ha. 
+# In this case, the two factors cancel each other out, as 0.0001 * 10000 = 1. Thus, we don't need to do anything to the GEE-downloaded data, as NPP in kg*C/m^2 with a 0.0001 scale is the same as NPP in kg*C/ha.
+
+
+npp <- 
+  mask(npp_nomask, 
+       mcd_igbp6to10or16_every_year_1_or_NA_1lyr_mask, 
+       filename = here("Data", "MODIS", "NPP", "v061_output",
+              "npp_kgC_ha_where_igbp6to10or16_every_year2001_2020_res000449.tif"),
+       overwrite = T)
+
+
+#################################### get the file
+ # allocated where grazing land every year 2001-2020 (some of the IGBP classes 6to10or16 every year)
+npp <- here("Data", "MODIS", "NPP", "v061_output",
+              "npp_kgC_ha_where_igbp6to10or16_every_year2001_2020_res000449.tif") %>% 
+  rast()
+
+plot(npp$npp2019)
+#################################### get the file
+```
+
+
+
+# Tree Cover Multiplier (TCM)
+More spesifically, the input data for TCM is MOD44B.006
+
+See:
+https://developers.google.com/earth-engine/datasets/catalog/MODIS_006_MOD44B
+
+
+```{r}
+# function that get rasterlist for different years
+rastlist_treecover_year <- function(year) {
+  list.files(path = here("Data", "MODIS", "MOD44B", "v06_from_GEE"),
+             pattern= paste0("MOD44B", year), 
+             full.names = TRUE) }
+
+
+
+# rastlist_treecover_year("2001")[1] %>% rast()
+
+
+
+
+# function for merging
+f_merge_year_tc <- function(year) {
+  lapply(rastlist_treecover_year(year), rast) %>% # convert list to raster
+  sprc() %>% # make a SpatRasterCollection from a list
+  merge(., # merge tiles
+        filename = paste0(here("Data", "MODIS", "MOD44B", "v06_processed"),
+                          "/tc_merged_",
+                        year ,".tif"),
+        names = paste0("tc", year, c("bot","med", "up"), collapse = ",")) 
+}
+
+
+tic()
+sapply(timestep_2001_2020 , f_merge_year_tc) # this takes a lot of time
+toc() #90min for a layer
+
+
+
+# combine merged tiffs 
+mymergedfiles_treecover <- 
+  list.files(path = here("Data", "MODIS", "MOD44B", "v06_processed"),
+             pattern="tc_merged_",
+             full.names=TRUE)
+
+mymergedfiles_treecover
+treecover_nomask <- rast(mymergedfiles_treecover) # 3 curves for every year 2001-2020 
+treecover_nomask$tc2020med %>% plot()
+
+
+# mask 
+# tic()
+# treecover <- 
+#   mask(treecover_nomask, mcd_gl_every_year_mask,
+#        filename = here("Data", "MODIS", "MOD44B", "v06_output",
+#                        "treecover2001_2020_where_gl_every_year2001_2020_res000449.tif"),
+#        overwrite = T)
+# toc() # 2.7h
+
+
+# or
+treecover <- 
+  mask(treecover_nomask, mcd_igbp6to10or16_every_year_1_or_NA_1lyr_mask,
+       filename = here("Data", "MODIS", "MOD44B", "v06_output",
+               "treecover2001_2020_where_igbp6to10or16_every_year2001_2020_res000449.tif"),
+       overwrite = T)
+
+# ################################### get the file (allocated where pastureland 2001-2020)
+treecover <- 
+  here("Data", "MODIS", "MOD44B", "v06_output",
+       "treecover2001_2020_where_igbp6to10or16_every_year2001_2020_res000449.tif") %>%
+  rast()
+treecover$tc2020med %>% plot() # looks ok: near deserts etc no trees --> tc close to 1
+# ################################### get the file (masked)
+```
+
+
+# MAP 
+
+Mean Annual Precipitation (MAP) based on climate normals of 1991-2020 (30yrs)
+v061_processed
+Data from
+https://climate.northwestknowledge.net/TERRACLIMATE/index_directDownloads.php 
+
+!! possible to get via GEE -- update code later if time
+https://developers.google.com/earth-engine/datasets/catalog/IDAHO_EPSCOR_TERRACLIMATE
+
+```{r}
+# get precipitation files based on a year
+rastlist_terraclim_ppt <- function(year) {
+  list.files(path = here("Data", "TerraClimate", "directdownloads"),
+             pattern= paste0("TerraClimate_ppt_", year), 
+             full.names = TRUE) }
+
+rastlist_terraclim_ppt(2001)
+rastlist_terraclim_ppt(2001)%>% rast() #12 layers for a year, monthly, ppt in mm 
+
+
+
+# function to get annual sums
+f_sum_ppt <- function(year) { 
+  sum(rastlist_terraclim_ppt(year) %>% rast(),
+  na.rm = T)} # cumulative precipitation
+
+# test1 <- f_sum_ppt(2001);plot(test1); summary(test1) #  Median : 322.0, Mean   : 537.0 
+
+
+# Get precipitation sum for each year
+tic()
+ppt_1991_2020 <- sapply(timestep_climnorm, f_sum_ppt) %>% 
+  rast() # 30min. 30 layers
+toc()
+
+
+# derive MAP 
+MAP_2.5arcmin <- mean(ppt_1991_2020, na.rm = T)
+plot(MAP_2.5arcmin); summary(MAP_2.5arcmin) # Median : 339.6,  Mean   : 546.4, Max.   :7105.0
+
+
+ # save
+writeRaster(MAP_2.5arcmin, 
+            here("Data", "TerraClimate", "processed", "MAP_2.5arcmin.tif"),
+            names = "MAP", overwrite = T)
+
+
+
+
+MAP_5arcmin_nomask <- 
+  aggregate(MAP_2.5arcmin, fact = 2, na.rm = T) %>% 
+  resample(., template_rast_5arcmin) %>% 
+  project(., template_rast_5arcmin, # not necessary to resample and project!
+          filename = 
+             here("Data", "TerraClimate", "output",
+                  "MAP_nomask_5arcmin.tif"),
+           overwrite = T)
+
+
+
+MAP_5arcmin_nomask <-
+  here("Data", "TerraClimate", "output",
+       "MAP_nomask_5arcmin.tif") %>% 
+  rast()
+
+
+# MAP_5arcmin <- 
+#   mask(MAP_5arcmin_nomask, r_fraction_gl_0toNA, filename = 
+#          here("Data", "TerraClimate", "output",
+#               "MAP_where_gl_every_year2001_2020_5arcmin.tif"),
+#        overwrite =T)
+
+# or
+MAP_5arcmin <- 
+  mask(MAP_5arcmin_nomask, 
+       r_fraction_gl_0toNA_igbp6to10or16, 
+       filename = here("Data", "TerraClimate", "output",
+              "MAP_where_igbp6to10or16gl_every_year2001_2020_5arcmin.tif"),
+       overwrite =T)
+
+
+
+#disaggregate 
+# tic()
+# MAP_disagg <-  
+#   disagg(here("Data", "TerraClimate", "processed", "MAP_2.5arcmin.tif") %>% rast(),
+#                fact = 9,
+#                filename = here("Data", "TerraClimate", "processed", 
+#                                "MAP_disagg_res000463.tif"),
+#          names = "MAP", overwrite = T) 
+# toc() # 2min
+# 
+# 
+# 
+# # resample to MODIS NPP (500m or 0.004491576 deg) using mcd rast as template
+# tic()
+# MAP_res_nomask_000449 <- 
+#   resample(MAP_disagg, mcd_gl_every_year_mask,
+#            filename = here("Data", "TerraClimate", "output",
+#                            "nomask_MAP_1991_2020_res000449.tif"),
+#            overwrite = T)
+# toc()
+
+
+# MAP_res_000449 <- 
+#   mask(MAP_res_nomask_000449, mcd_gl_every_year_mask,
+#        filename = here("Data","TerraClimate", "output",
+#                        "MAP_1991_2020_where_gl_every_year2001_2020_res000449.tif"),
+#        overwrite = T)
+
+
+# get the file
+MAP_5arcmin <- 
+  here("Data", "TerraClimate", "output",
+       "MAP_where_igbp6to10or16gl_every_year2001_2020_5arcmin.tif") %>% 
+  rast()
+plot(MAP_5arcmin)
+```
+
+# MAT
+
+Mean Annual Temperature (MAT) based on climate normals of 1991-2020 (30yrs).
+Unit for MAT: Celsius´degrees
+
+Data from
+https://climate.northwestknowledge.net/TERRACLIMATE/index_directDownloads.php 
+
+```{r}
+# function for retrieving the temperature files for each year (tmin and tmax)
+rastlist_terraclim_temperature <- function(min_or_max, year) {
+  list.files(path = here("Data", "TerraClimate", "directdownloads"),
+             pattern= paste0(min_or_max, "_", year), 
+             full.names = TRUE) }
+
+rastlist_terraclim_temperature("tmin", "2001") # check
+
+
+# create a function that creates a raster based on a list, takes mean for each month (mean of min and max) and then derives annual mean temperature for every year
+f_mean_temp <- function(year) { mean( # first mean function has arguments tmin, tmax
+  rastlist_terraclim_temperature("tmin", year) %>% rast(), 
+  rastlist_terraclim_temperature("tmax", year) %>% rast(),
+  na.rm = T) %>% 
+  mean(., na.rm = T)  } # annual average temperature
+
+# test1 <- f_mean_temp("2001");plot(test1) # test
+
+
+
+# Get average temperature for each year
+avgtemp <- sapply(timestep_climnorm, f_mean_temp) %>% 
+  rast() # 30min. Names as paste0("avgtemp_", timestep_climnorm)
+
+
+
+# derive MAT from average annual temperatures
+MAT_2.5arcmin <- mean(avgtemp, na.rm = T)
+plot(MAT_2.5arcmin)
+ # save
+writeRaster(MAT_2.5arcmin, here("Data", "TerraClimate", "processed",
+                                "MAT_2.5arcmin.tif"),
+            names = "MAT", overwrite = T)
+
+
+MAT_2.5arcmin <- 
+  here("Data", "TerraClimate", "processed",
+                                "MAT_2.5arcmin.tif") %>% 
+  rast()
+
+MAT_5arcmin_nomask <- 
+  aggregate(MAT_2.5arcmin, fact = 2, na.rm = T) %>% 
+  resample(., template_rast_5arcmin) %>% 
+  project(., template_rast_5arcmin, filename = 
+             here("Data", "TerraClimate", "output",
+                  "MAT_nomask_5arcmin.tif"),
+           overwrite = T)
+
+
+MAT_5arcmin_nomask <- 
+  here("Data", "TerraClimate", "output","MAT_nomask_5arcmin.tif") %>% 
+  rast()
+
+# MAT_5arcmin <- 
+#   mask(MAT_5arcmin_nomask, r_fraction_gl_0toNA, filename = 
+#          here("Data", "TerraClimate", "output",
+#               "MAT_where_gl_every_year2001_2020_5arcmin.tif"),
+#        overwrite =T)
+# or
+MAT_5arcmin <- 
+  mask(MAT_5arcmin_nomask, 
+       r_fraction_gl_0toNA_igbp6to10or16, filename = 
+         here("Data", "TerraClimate", "output",
+              "MAT_where_igbp6to10or16gl_every_year2001_2020_5arcmin.tif"),
+       overwrite =T)
+
+# disaggregate
+# MAT_disagg <-  
+#   disagg(here("Data", "TerraClimate", "processed", "MAT_2.5arcmin.tif") %>% rast(),
+#                fact = 9,
+#                filename = here("Data","TerraClimate", "processed",
+#                                "MAT_disagg_res000463.tif"),
+#          overwrite = T) 
+# 
+# MAT_disagg
+# 
+# 
+# # resample to MODIS NPP (500m or 0.004491576 deg) using mcd rast as template
+# MAT_res_000449_nomask <- 
+#   resample(MAT_disagg, mcd_gl_every_year_mask,
+#            filename = here("Data","TerraClimate", "output",
+#                            "nomask_MAT_1991_2020_res000449.tif"),
+#            overwrite =T)
+
+
+# MAT_res_000449 <- mask(MAT_res_000449_nomask, mcd_gl_every_year_mask,
+#             filename = here("Data","TerraClimate", "output",
+#                             "MAT_1991_2020_where_gl_every_year2001_2020_res000449.tif"),
+#             overwrite =T)
+
+# ################################### get the file (masked)
+MAT_5arcmin <- 
+  here("Data", "TerraClimate", "output",
+       "MAT_where_igbp6to10or16gl_every_year2001_2020_5arcmin.tif") %>% 
+  rast()
+MAT_5arcmin %>% plot()
+################################### get the file
+```
+
+
+# Terrain slope
+
+Data from: https://www.nature.com/articles/s41597-020-0479-6
+Expressed originally in degrees*100 but we must convert them to slope%
+Ref: 
+Amatulli, G., McInerney, D., Sethi, T., Strobl, P., & Domisch, S. (2020). Geomorpho90m, empirical evaluation and accuracy assessment of global high-resolution geomorphometric layers. Scientific Data, 7(1), 162. https://doi.org/10.1038/s41597-020-0479-6
+
+
+```{r}
+slope_input <- 
+  here("Data", "Slope", "rawdata",
+       "dtm_slope_merit.dem_m_250m_s0..0cm_2018_v1.0.tif") %>%
+  rast()
+
+
+# aggregate and change to percents. Slopes originally degree * 100 but we need slope% instead 
+slope_agg_percent <- aggregate(slope_input, fact = 2, na.rm = TRUE) %>% 
+  app(., function (x) {100 * tan((x/100)*pi/180  )})
+
+
+
+# Reclassify slope raster, which is now expressed in percents
+m_slopes <- c(0, 10, 1,
+              10, 30, 0.7,
+              30, 60, 0.4,
+              60, Inf, 0) # George and Lyle 2009
+rclmat_slopes <- matrix(m_slopes, ncol=3, byrow=TRUE)
+
+slope_agg_percent_reclassified <-
+  classify(slope_agg_percent,
+           rclmat_slopes, include.lowest = TRUE, othersNA = TRUE) 
+
+# resample 
+slope_agg_percent_reclassified_resamp <-   resample(slope_agg_percent_reclassified, mcd) 
+
+ # remove few odd values (reclassified slope > 1) -- probably faster with classify
+slope_agg_percent_reclassified_resamp[slope_agg_percent_reclassified_resamp > 1] <- 1
+
+
+
+writeRaster(slope_agg_percent_reclassified_resamp,
+           filename = here("Data", "Slope", "output",
+                           "nomask_slope_reclassified_res000449.tif"),
+           names = "slope", overwrite = T)
+
+slope_agg_percent_reclassified_resamp <-
+  here("Data", "Slope", "output",
+                           "nomask_slope_reclassified_res000449.tif") %>% 
+  rast()
+  
+# tic()  
+# slope <- 
+#   mask(slope_agg_percent_reclassified_resamp, mcd_gl_every_year_mask,
+#        filename = here("Data", "Slope", "output",
+#                        "slope_reclassified_where_gl_every_year2001_2020_res000449.tif"),
+#               overwrite =T)
+# toc()
+
+# or 
+slope <- 
+  mask(slope_agg_percent_reclassified_resamp, mcd_igbp6to10or16_every_year_1_or_NA_1lyr_mask,
+       filename = here("Data", "Slope", "output",
+                       "slope_reclassified_where_igbp6to10or16_every_year2001_2020_res000449.tif"),
+       overwrite =T)
+
+################################### get the file (masked)
+slope <-
+  here("Data", "Slope", "output",
+       "slope_reclassified_where_igbp6to10or16_every_year2001_2020_res000449.tif") %>% 
+  rast()
+plot(slope)
+################################### get the file
+plot(slope_agg_percent_reclassified_resamp)
+```
+
+
+# Next we need uncertainty data for NPP partitioning
+
+Sun et al. (2021) Fig 6d CV
+https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2021JG006472
+
+```{r}
+sun_cv <- here("Data","Sun_et_al_CV","fengyuhao1030-Grassland_NPP-f7a9c9e",
+               "Figs","Fig_6","Fig_6d",
+               "fBNPP_CV_Proj_Clip_Scale_0001.tif") %>% 
+  rast()
+sun_cv
+
+
+#sun_cv_proj <- project(sun_cv, mcd_gl_every_year_mask)
+
+# Aggregate, change projection and resample (15sec)
+ncell(sun_cv)/1e6
+sun_cv_agg <- aggregate(sun_cv, fact = 9)
+sun_cv_agg
+#sun_cv_agg %>% plot()
+
+## unscale here
+sun_cv_agg_unscale <- sun_cv_agg * 0.0001
+
+
+sun_et_al_cv_5arcmin <- 
+  project(sun_cv_agg_unscale, "EPSG:4326") %>% 
+  resample(., template_rast_5arcmin)
+names(sun_et_al_cv_5arcmin) <- "sun_et_al_cv"
+
+
+# writeRaster(sun_et_al_cv_5arcmin,
+#             file = here("Data","Sun_et_al_CV", "Sun_et_al_intermediate_inputs",
+#                         "CV_Sun_et_al_unscaled_5arcmin.tif"),
+#             overwrite = T)
+
+
+# --------------------------------------------------------------- Regional Means
+# The CV values are not given for all pixels we have NPP data for. The approach below is to extract the regional (regions used in analysis) mean CV values, then add the mean value for the region to the empty pixels in that region. The approach used map algebra.
+sun_et_al_regional_cv <- 
+  extract(sun_et_al_cv_5arcmin, reg_wgs_vect, fun = "mean", na.rm = T)
+sun_et_al_regional_cv <- sun_et_al_regional_cv %>% 
+  mutate(subregion = reg_wgs_vect$Region_new,
+         regnumber = 1:nrow(.))
+
+
+reg_wgs_rast <-
+  reg_wgs %>% 
+  mutate(regnumber = 1:nrow(.)) %>% 
+  as(., "Spatial") %>% 
+  vect() %>% 
+  rasterize(., template_rast_5arcmin,  field = "regnumber")
+
+plot(reg_wgs_rast)
+
+# classify. Change values of reg_wgs_rast so that these represent average CV values
+  ## create reclassification matrix
+rcl_sun_et_al <- sun_et_al_regional_cv %>% 
+  dplyr::select(regnumber, sun_et_al_cv ) %>% 
+  as.matrix()
+
+  ## classify
+sun_et_al_raster_fills_the_globe <-
+  reg_wgs_rast %>% 
+  classify(rcl_sun_et_al)
+names(sun_et_al_raster_fills_the_globe) <- "sun_et_al_cv"
+
+
+sun_et_al_raster_fills_the_globe  %>% qtm(., title = "Filled Sun et al CV")
+plot(sun_et_al_cv_5arcmin, main = "original Sun et al CV before filling")
+sun_et_al_cv_filled_nomask_5arcmin <- 
+  terra::cover(sun_et_al_cv_5arcmin, sun_et_al_raster_fills_the_globe, values = NA)
+plot(sun_et_al_cv_filled_nomask_5arcmin, main = "CV after filling") # for comparison
+
+
+
+
+
+
+
+
+# ------------------------------------------------------- mask to relevant areas
+# sun_et_al_cv_filled_5arcmin <-
+#   mask(sun_et_al_cv_filled_nomask_5arcmin, r_fraction_gl_0toNA )
+# names(sun_et_al_cv_where_gl_every_year_2001_2020_5arcmin) <- "sun_et_al_cv"
+
+# or
+sun_et_al_cv_filled_5arcmin <-
+  mask(sun_et_al_cv_filled_nomask_5arcmin, r_fraction_gl_0toNA_igbp6to10or16 )
+names(sun_et_al_cv_filled_5arcmin) <- "sun_et_al_cv"
+
+plot(sun_et_al_cv_filled_5arcmin)
+
+```
+
+
+
+
+# Combine, aggregate and resample input data to 5arcmin 
+In this chunck, masked to areas where there is some gl every year 2001-2020
+
+```{r}
+# ---------------------------------- mask to areas where gl every year 2001-2010 
+# npp_tc_slope_where_gl_every_year_2001_2020_500m <-
+#   c(npp, treecover, slope) # no MAT, MAP or sun_et_al_cc here
+#   
+# 
+# # --------------------------------------- Aggregate and resample this input data
+#   # masked input for AGB
+# tic()
+# npp_tc_slope_where_gl_every_year_2001_2020_agg  <-
+#   npp_tc_slope_where_gl_every_year_2001_2020_500m %>% 
+#   aggregate(., fact = 18, na.rm = T, filename =
+#               here("Data", "AGB", "Inputs_for_AGBcalculations",
+#                    "npp_tc_slope_where_gl_every_year_2001_2020_agg18.tif"),
+#             overwrite =T) 
+# toc() # 2-3h
+# 
+# 
+# 
+#   ## resample
+# tic()
+# npp_tc_slope_where_gl_every_year_2001_2020_5arcmin <-
+#   npp_tc_slope_where_gl_every_year_2001_2020_agg %>% 
+#   resample(., template_rast_5arcmin, filename =
+#              here("Data", "AGB", "Inputs_for_AGBcalculations",
+#                   "npp_tc_slope_where_gl_every_year_2001_2020_5arcmin.tif"),
+#            overwrite = T)
+# toc() # 1min
+# 
+# 
+# 
+# # ----------------------------- combine with other input data
+# data_for_simulation_masked_where_gl_2001_2020 <-
+#   c(npp_tc_slope_where_gl_every_year_2001_2020_5arcmin, 
+#     MAT_5arcmin, MAP_5arcmin,
+#     sun_et_al_cv_filled_5arcmin)
+# 
+# 
+# writeRaster(data_for_simulation_masked_where_gl_2001_2020,
+#             filename = here("Data", "AGB", "Inputs_for_AGBcalculations",
+#                             "input_data_for_agb_sim_masked_where_gl_2001_2020.tif"),
+#             overwrite =T)
+# 
+# 
+# ################################################## get the gfile
+# data_for_simulation_masked_where_gl_2001_2020 <-
+#   here("Data", "AGB", "Inputs_for_AGBcalculations",
+#        "input_data_for_agb_sim_masked_where_gl_2001_2020.tif") %>% 
+#   rast()
+# 
+# plot(data_for_simulation_masked_where_gl_2001_2020$npp2010)
+# plot(data_for_simulation_masked_where_gl_2001_2020$tc2010med)
+# plot(data_for_simulation_masked_where_gl_2001_2020$sun_et_al_cv)
+# plot(data_for_simulation_masked_where_gl_2001_2020$MAT)
+# 
+# 
+
+
+
+
+
+# same but using different mask r_fraction_gl_0toNA_igbp6to10or16 
+tic()
+npp_tc_slope_where_igbp6to10or16gl_every_year_2001_2020_agg  <-
+  c(npp, treecover, slope) %>% # masked with igbp6to10or16gl
+  aggregate(., fact = 18, na.rm = T, filename =
+              here("Data", "AGB", "Inputs_for_AGBcalculations",
+                   "npp_tc_slope_where_igbp6to10or16gl_every_year_2001_2020_agg18.tif"),
+            overwrite =T) 
+toc() # 2-3h
+
+
+  ## resample
+tic()
+npp_tc_slope_where_igbp6to10or16gl_every_year_2001_2020_5arcmin <-
+  npp_tc_slope_where_igbp6to10or16gl_every_year_2001_2020_agg %>% 
+  resample(., template_rast_5arcmin, filename =
+             here("Data", "AGB", "Inputs_for_AGBcalculations",
+                  "npp_tc_slope_where_igbp6to10or16gl_every_year_2001_2020_5arcmin.tif"),
+           overwrite = T)
+toc() # 1min
+
+
+# ----------------------------- combine with other input data
+data_for_simulation_masked_where_igbp6to10or16gl_2001_2020 <-
+  c(npp_tc_slope_where_igbp6to10or16gl_every_year_2001_2020_5arcmin, 
+    MAT_5arcmin, 
+    MAP_5arcmin,
+    sun_et_al_cv_filled_5arcmin)
+
+
+writeRaster(data_for_simulation_masked_where_igbp6to10or16gl_2001_2020,
+            filename = here("Data", "AGB", "Inputs_for_AGBcalculations",
+                            "input_data_for_agb_sim_masked_where_igbp6to10or16gl_2001_2020.tif"),
+            overwrite =T)
+
+
+
+####### get the file
+data_for_simulation_masked_where_igbp6to10or16gl_2001_2020 <-
+  here("Data", "AGB", "Inputs_for_AGBcalculations",
+       "input_data_for_agb_sim_masked_where_igbp6to10or16gl_2001_2020.tif") %>% 
+  rast()
+```
+
+
+
+
+# Aggregate and resample nomasked input data to 5arcmin 
+
+```{r}
+# Files without any mcd mask
+ # npp
+mymergedfiles_npp <- 
+  list.files(path = here("Data", "MODIS", "NPP", "v061_processed"),
+             pattern="npp_merged_",
+             full.names=TRUE)
+npp_nomask <- rast(mymergedfiles_npp) 
+ # treecover
+mymergedfiles_treecover <- 
+  list.files(path = here("Data", "MODIS", "MOD44B", "v06_processed"),
+             pattern="tc_merged_",
+             full.names=TRUE)
+treecover_nomask <- rast(mymergedfiles_treecover) 
+
+ # slope
+slope_nomask <- 
+  here("Data", "Slope", "output",
+       "nomask_slope_reclassified_res000449.tif") %>% 
+  rast()
+
+
+npp_tc_slope_nomask_500m <- 
+  c(npp_nomask, treecover_nomask, slope_nomask) 
+
+
+  # unmasked input for AGB
+tic()
+npp_tc_slope_nomask_agg   <-
+  npp_tc_slope_nomask_500m %>% 
+  aggregate(., fact = 18, na.rm = T, filename =
+              here("Data", "AGB", "Inputs_for_AGBcalculations",
+                   "npp_tc_slope_nomask_agg18.tif")) 
+toc() # 2h
+
+
+  ## resample
+tic()
+npp_tc_slope_nomask_5arcmin <-
+  npp_tc_slope_nomask_agg  %>% 
+  resample(., template_rast_5arcmin, filename =
+             here("Data", "AGB", "Inputs_for_AGBcalculations",
+                  "npp_tc_slope_nomask_5arcmin.tif"),
+           overwrite = T)
+toc() # 2-15min
+
+
+# Combine with non masked MAT, MAP and Sun et al CV
+data_for_simulation_nomask <- 
+  c(npp_tc_slope_nomask_5arcmin,
+    sun_et_al_cv_filled_nomask_5arcmin,
+    MAT_5arcmin_nomask,
+    MAP_5arcmin_nomask)
+
+
+writeRaster(data_for_simulation_nomask,
+            filename = here("Data", "AGB", "Inputs_for_AGBcalculations",
+                            "input_data_for_agb_sim_nomask.tif"))
+
+############################################ get the file
+data_for_simulation_nomask <-
+  here("Data", "AGB", "Inputs_for_AGBcalculations",
+       "input_data_for_agb_sim_nomask.tif") %>% 
+  rast()
+```
+
+
+# 500m (not sure if needed)
+
+```{r}
+
+ # MAT
+MAT_res_000449_nomask <- 
+  here("Data","TerraClimate", "output","nomask_MAT_1991_2020_res000449.tif") %>% 
+  rast()
+ # MAP
+MAP_res_nomask_000449 <- 
+  here("Data", "TerraClimate", "output","nomask_MAP_1991_2020_res000449.tif") %>% 
+  rast()
+```
+
+
+
+# Combine data_for_simulation to include GLW4 da animals
+
+```{r}
+######## get the data
+data_for_simulation_masked_where_igbp6to10or16gl_2001_2020 <-
+  here("Data", "AGB", "Inputs_for_AGBcalculations",
+       "input_data_for_agb_sim_masked_where_igbp6to10or16gl_2001_2020.tif") %>% 
+  rast()
+
+glw4_da_and_area <- here("Data", "GLW", "GLW4", "output", "glw4_da_and_area.tif") |> rast()
+plot(glw4_da_and_area) # NA values e.g. buffalo north america
+
+# convert NA to 0
+glw4_da_and_area <- 
+  classify(glw4_da_and_area, cbind(NA,0))
+
+
+glw4_da_and_area_masked <-
+  mask(glw4_da_and_area, data_for_simulation_masked_where_igbp6to10or16gl_2001_2020$npp2001)
+
+
+data_for_simulation_also_GLW4_animals <- 
+  c(data_for_simulation_masked_where_igbp6to10or16gl_2001_2020, 
+    glw4_da_and_area_masked)
+
+names(data_for_simulation_also_GLW4_animals) # good!
+
+writeRaster(data_for_simulation_also_GLW4_animals,
+            filename = here("Data", "AGB", "Inputs_for_AGBcalculations",
+                            "input_data_for_agb_sim_also_GLW4_da_animals.tif"),
+            overwrite =T)
+
+
+########### get the data_for_simulation_also_GLW4_animals
+data_for_simulation_also_GLW4_animals <-
+  here("Data", "AGB", "Inputs_for_AGBcalculations",
+       "input_data_for_agb_sim_also_GLW4_da_animals.tif") %>% 
+  rast()
+
+```
+
+
+# Save some outputs separately with 5arcmin resolution
+
+needed elsewhere
+
+```{r}
+tic()
+# NPP
+npp_nomask_5arcmin <- 
+  aggregate(npp_nomask, fact = 18, na.rm = T) |> 
+  resample(template_rast_5arcmin,
+           filename = here("Data", "MODIS", "NPP", "v061_output",
+                           "npp_nomask_5arcmin.tif"),
+           overwrite = T)
+
+# Treecover
+tcm_nomask_5arcmin <- 
+  aggregate(treecover_nomask, fact = 18, na.rm = T) |> 
+  resample(template_rast_5arcmin,
+           filename = here("Data", "MODIS", "MOD44B", "v06_output",
+                           "tcm_nomask_5arcmin.tif"),
+           overwrite = T)
+toc()
+```
+

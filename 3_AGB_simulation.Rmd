@@ -1,0 +1,470 @@
+---
+title: "jp_sim2_agb_test"
+author: "Gabriel Cramer"
+date: "01/05/2023"
+output: html_document
+---
+
+
+! Make unit of NPP and AGB extra clear.  Add it to filename
+
+
+
+Takes 8h if n=1000
+
+```{r setup, include=FALSE}
+
+packages <-  c("tidyverse", "truncnorm", "matrixStats", "tictoc", "here", "data.table", "terra", "scico", "beepr", "collapse", "tmap") # is beepr installed elsewhere? 
+
+lapply(packages, require, character.only = TRUE)
+
+epsg4326 <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0" # --> maybe better to use "EPSG:4326" instead
+pal_cv <-  scico::scico(n = 6, palette = "nuuk", direction = -1)
+
+```
+
+```{r read data}
+
+# files created with Johannes' script collated in create_sim_input.Rmd
+# newer version with filled cv raster, called '*3.csv' locally to distinguish
+
+# get data
+
+data_for_simulation <-
+  here("Data", "AGB", "Inputs_for_AGBcalculations",
+       "input_data_for_agb_sim_masked_where_igbp6to10or16gl_2001_2020.tif") %>% 
+  rast()
+
+## data_for_simulation_nomask <- # If someone wants to run sim without any mcd mask
+  # here("Data", "AGB", "Inputs_for_AGBcalculations",
+  #      "input_data_for_agb_sim_nomask.tif") %>% 
+  # rast()
+
+
+
+df <- data_for_simulation %>% as.data.frame(., xy=TRUE, na.rm = TRUE)
+
+
+
+# fraction NPP
+# df["f_anpp"] <- -1.14 * 10^-7 * df$MAP^2 + 3.07 * 10^-4 * df$MAP +6.65 * 10^-3 * df$MAT + 0.214 # maybe nicer to write 1 - this:
+df$f_anpp <- (1 - (0.000000114*df$MAP^2 - 0.000307*df$MAP - 0.00665*df$MAT + 0.786)) 
+
+# convert negative f_anpp values to zeros --> was NA but that was not good
+summary(df$f_anpp)
+df <- df %>% 
+  mutate(f_anpp = ifelse(f_anpp < 0, 0, f_anpp))
+summary(df$f_anpp)
+
+# calculate the standard deviation of npp for simulation from Sun et al. coefficient of variation
+df["sun_sd"] <- abs(df$sun_et_al_cv * df$f_anpp) # to avoid negative values creeping in.
+
+df$sun_sd %>% summary()
+
+```
+
+# TEST by Johannes
+Calculate AGB in 2010 without simulation. Just to get something to compare 
+
+MODIS webpage notifies original scaling factor of NPP to be 0.0001 and therefore final results should be divided by 10 000. The unit of NPP is originally kg*C /m2. However, as we convert NPP to hectares, this simplifies to
+(NPP / 10000 )  * 10000  = NPP  (unit is npp kg carbon per ha ) 
+
+```{r}
+######################## MODIFY THIS AS NOT SURE IF THIS HAS BEEN CONVERTED TO HECTARES
+## create column that calculates AGB in 2010 without simulation 
+ carbcf_0485 <- 0.485
+ PUF_0.41 <- 0.41 # just a test number
+
+#   ## new col for f_ANPP_fraction
+ df1 <- df %>%
+   mutate(f_ANPP_fraction =  (1 - (0.000000114*MAP^2 - 0.000307*MAP - 0.00665*MAT + 0.786)))
+#
+ summary(df1$f_ANPP_fraction) # <0 can be deleted
+#
+ df1 <- df1 %>%
+   mutate(f_ANPP_fraction = ifelse(f_ANPP_fraction > 0, f_ANPP_fraction, NA))
+
+ summary(df1$f_ANPP_fraction) # min = 0, median and mean 0.39
+
+## AGB = npp2010/carbcf_0485 * tc2010med * slope * f_ANPP_fraction * PUF_0.41
+ df1_2010 <- df1 %>%
+   dplyr::select(x,y, npp2010, tc2010med, slope, f_ANPP_fraction) # MAT and MAP not needed anymore
+#
+ head(df1_2010)
+#
+#
+ df1_2010 <- df1_2010 %>%
+   mutate(AGB2010 = (npp2010/carbcf_0485) * tc2010med * slope * f_ANPP_fraction * PUF_0.41)
+ 
+ 
+ # Summaries --> why is AGB so low?
+ df1$tc2010med |> summary() # median 0.68 mean 0.62
+ df1$slope |> summary() # median 1 mean 0.91
+ df1_2010$npp2010 %>% summary() # median 2700 mean 3500 
+ # --> becomes 2x larger when we divide this by 0.485
+ # --> becomes almost to the same level as original npp when we multiply with PUF_0.41
+ # --> slope does not change the value much
+ # --> becomes much smaller when we multiply with f_ANPP_fraction, which is around 0.39
+ # --> becomes bit smaller when we multiply with tc2010med, which is around 0.7
+ # this multiplier of NPP when using mean and median values is:
+ (0.68 * 1 * 0.39 * 0.41)/0.485 #  0.22 with median values --> so the AGB is about 1/4 of total NPP
+ (0.62 * 0.91 * 0.39 * 0.41)/0.485 # 0.19 with mean values --> so the AGB is about 1/5 of total NPP
+ (0.62 * 0.91 * 0.43 * 0.41)/0.485 # 0.20 if we would use global fBNBB value provided by Sun et al
+ 
+ # some more small sensitivity test
+# df1_2010_tc_up <-  df1 %>%
+#    dplyr::select(x,y, npp2010, tc2010up, slope, f_ANPP_fraction) %>%
+#    mutate(AGB2010 = (npp2010/carbcf_0485) * tc2010up * slope * f_ANPP_fraction * PUF_0.41)
+# df1_2010_tc_up$tc2010up %>% summary() # median 0.71 mean 0.65 
+#(0.71 * 1 * 0.39 * 0.41)/0.485 # 0.23
+
+# If we would use f_ANPP of Hui and Jackson
+#  df1 <- df1 %>%
+#    mutate(f_ANPP_fraction_hui = 0.171 + 0.0129 * df1$MAT) |> # remove < 0 values
+#    mutate(f_ANPP_fraction_hui = ifelse(f_ANPP_fraction_hui > 0, f_ANPP_fraction_hui, NA))
+# df1$f_ANPP_fraction_hui %>% summary() # median 0.31 mean 0.31 -- not much difference  
+ 
+
+ df1_2010$AGB2010 %>% summary() # median 290, mean 480 kg per ha --> low
+ 
+#
+ r_agb2010 <- rast(df1_2010, type = "xyz", crs = "EPSG:4326")
+ r_agb2010$AGB2010 %>% plot()
+ summary(r_agb2010$AGB2010)
+ hist(r_agb2010$AGB2010/1e3)
+
+#
+# # -------------------------------------------------- plot
+ pal_agb <- scico(n = 6, palette = "bamako", direction = -1)
+
+# unit = kg per ha but nocite that amount of AGB is rougly half of the total AGB reported in GCB
+    create_index_map(r_index = r_agb2010$AGB2010, 
+                     tocrs = "ESRI:54030",
+                     index_main_title = "AGB",
+                     index_label = "AGB kg/ha",
+                     colorpal = pal_agb, 
+                     breakvals =  c(-Inf,250,500,1000,1500,2000, Inf), 
+                     breaknames = c( "< 250", "250-500","500-1000",
+                                     "1000-1500", "1500-2000", "> 2000")) 
+```
+
+Some cells do not have a CV value because it was absent from the input dataset created by Sun et al. Johannes calculated the regional average CV for each of the 13 regions used in this analysis defined in 'reg_mollw.gpkg' in the input data bundle.
+
+```{r examine CV}
+
+# length(which(df$sun_sd < 0))
+
+# length(which(is.na(df$sun_sd)))
+# t <- df %>% dplyr::select(x, y, sun_sd)
+# 
+# #hist(df$CV_Sun_et_al)
+# 
+# t %>%
+#   raster::rasterFromXYZ(., crs = epsg4326) %>%
+#   raster::plot(.)
+
+```
+
+## Helper functions for building matrices
+
+```{r rep functions}
+
+rep_col <- function(column, n) {
+  matrix(rep(column, each = n), ncol = n, byrow = TRUE)
+}
+
+rep_row <- function(vec, n) {
+  matrix(rep(vec, each = n), nrow = n)
+}
+
+```
+
+## Simulate AGB function
+
+
+agb = simnpp_biom * simfANPP * simtreecov * slope * PUF
+
+(npp2010 / carbcf_0485) * tc2010med * slope * f_ANPP_fraction * PUF)
+
+```{r sim_agb repeated distribution}
+
+sim_agb <- function(d, n, c, carbcf_dist, PUF) {
+  
+  n2 <- nrow(d)
+  
+  # creates distribution for each row based on the values of f_anpp and the CV values provided by Sun et al
+  npp_dist <- t(apply(d, 1, function(x) {rnorm(n, mean = c, sd = x["sun_sd"])}))
+  
+  # repeat f_anpp to multiple each sim instance of npp.
+  f_anpp_mat <- rep_col(d[, "f_anpp"], n)
+  # simnpp_biom created using the simulated values for the npp_dist multiplied by npp
+  # # i.e simulating npp
+  npp_mat <- rep_col(d[, "npp"], n)
+  # simnpp_biom <- collapse::TRA(simnpp_biom, var_rnorm_npp_dist, "*")
+  simnpp_biom <- npp_mat * npp_dist * f_anpp_mat
+  # simnpp_biom <- simnpp_biom 
+  simnpp_biom <- collapse::TRA(simnpp_biom, carbcf_dist, "/") # apply carbon conversion factor
+  
+  # f_anpp <- rep_col(d[, "f_anpp"], n)
+  
+  simtreecov <- t(apply(d, 1, function(x) {rtruncnorm(n, a = x["tc_bot"], b = x["tc_up"], mean = x["tc_med"])}))
+  simtreecov[is.na(simtreecov)] <- 1
+  
+  # slope  
+  slope <- rep_col(d[, "slope"], n)
+  
+  # consumption proportion (Proper Use Factor PUF)
+  PUF
+  
+  # compute above ground biomass
+  agb <- simnpp_biom * simtreecov * slope
+  
+  # limit AGB by simulated consumption proportion PUF
+  agb <- collapse::TRA(agb, PUF, "*")
+  
+##  agb[agb < 0.1] <- NA ### We don't want to do this, was done in GCB paper
+  
+  return(agb)
+  
+}
+
+```
+
+## CV and Median calculations
+
+``` {r calculate simulation median and CV values}
+
+calc_sim_median <- function(mat) {
+  
+  m <- matrixStats::rowMedians(mat)
+  m[is.nan(m)] <- NA
+  m[is.infinite(m)] <- NA
+  
+  return(m)
+  
+}
+
+
+calc_sim_cv <- function(mat) {
+  
+  s_dev <- matrixStats::rowSds(mat, na.rm = T)
+  m_ean <- matrixStats::rowMeans2(mat, na.rm = T)
+  
+  cv <- s_dev / m_ean
+  
+  cv[is.nan(cv)] <- NA
+  cv[is.infinite(cv)] <- NA
+  
+  return(cv)
+  
+}
+
+```
+
+## simulate wrapper function
+ 
+```{r simulate wrapper function}
+
+simulate_wrapper <- function(df, year, n, c, carbcf_dist, PUF) {
+  
+  year <- as.character(year)
+  
+  d <- df %>% dplyr::select(contains(year), slope, MAT, MAP, f_anpp, sun_sd) %>% as.matrix(.)
+  colnames(d) <- c("npp", "tc_bot", "tc_med", "tc_up", "slope", "MAT", "MAP", "f_anpp", "sun_sd")
+  
+  AGB <- sim_agb(d, n, c, carbcf_dist, PUF); cat(".")
+
+  agb_med <- calc_sim_median(AGB)
+  agb_cv <- calc_sim_cv(AGB)
+  cat(".")
+
+    
+  results <- cbind(agb_med, agb_cv)
+    
+  colnames(results) <- sapply(colnames(results), function(x) {stringr::str_c(x, "_", year)})
+  return(results)
+  
+}
+
+```
+
+## sim for each year in each chunk
+
+```{r apply simulation functions to each year}
+
+chunk_sim <- function(df, n, c, carbcf_dist, PUF) {
+  
+  cat("\n")
+  
+  xy <- df %>% dplyr::select(x, y) # coords
+  
+  year_list <- 2001:2020
+  results <- list()
+  
+  for (year in year_list) {
+    cat("|")
+    y <- as.character(year)
+    
+    results[[y]] <- simulate_wrapper(df, year, n, c, carbcf_dist, PUF)
+    
+    
+  }
+  
+  output <- do.call(cbind, results) %>% as.data.frame(.)
+  output <- cbind(xy, output)
+  #beepr::beep(1)
+  
+  return(output)
+  
+}
+
+```
+
+# The Simulaiton
+
+## General inputs
+
+These variables are inputs, but they need to be the same in each segement. Unless we decide later that each cell should have a fresh random draw for the simulations. But as it stands, these distributions will be used for each cell. The point is to avoid a separate random draw for each chunk of the dataset when we run the full sim. so the randow draws should be the same for all cells, or fresh for each cell. 
+
+```{r set up some useful variables}
+
+n <- 1000 # will be 1000 eventually for full results
+c <- 1 # the mean value of the var_rnorm_npp simulations
+
+
+# distributions for AGB sims (uniform distribution)
+carbcf_dist <- runif(n, min=0.47, max=0.50)
+
+
+
+
+
+########################################################## Proper Use Factor (PUF)
+# the amount of AGB animals can sustainably consume (sometimes referred as hasvest efficiency but mostly PUF)
+# Define values
+vals_min <- c(0.25, 0.30, 0.20, 0.25, 0.125, 0.20, 0.47, 0.12, 0.20)
+vals_max <- c(0.60, 0.45, 0.80, 0.60, 0.25, 0.50, 0.66, 0.50, 0.70)
+vals_average <- c(0.3182, 0.375, 0.4768, 0.4333, 0.3198, 0.3786, 0.5733, 0.2711, 0.475)
+# Calculate standard deviation
+all_vals <- c(vals_min, vals_max, vals_average)
+vals_sd <- sd(all_vals)
+
+# References for derived PUF values:
+# Amiri, F., Shariff, A.R.B.M., Tabatabaie, T., 2012. Monitoring Land Suitability for Mixed Livestock Grazing Using Geographic Information System (GIS). Application of Geographic Information Systems. https://doi.org/10.5772/47939
+# De Leeuw, P.N., Tothill, J.C., 1990. The concept of rangeland carrying capacity in sub-Saharan Africa: Myth or reality. Overseas Development Institute, Pastoral Development Network London.
+# Harris, P.S., 2000. Grassland resource assessment for pastoral systems. FAO plant production and protection paper.
+# Holechek, J.L., 1988. An approach for setting the stocking rate. Rangelands Archives 10, 10–14.
+# Meehan, M.A., Sedivec, K.K., Printz, J.L., Brummer, F.A., 2018. Determining carrying capacity and stocking rates for range and pasture in North Dakota. NDSU Extension, North Dakota State University.
+# Meshesha, D.T., Moahmmed, M., Yosuf, D., 2019. Estimating carrying capacity and stocking rates of rangelands in Harshin District, Eastern Somali Region, Ethiopia. Ecology and Evolution 9, 13309–13319.
+# Qin, P., Sun, B., Li, Z., Gao, Z., Li, Y., Yan, Z., Gao, T., 2021. Estimation of Grassland Carrying Capacity by Applying High Spatiotemporal Remote Sensing Techniques in Zhenglan Banner, Inner Mongolia, China. Sustainability 13, 3123. https://doi.org/10.3390/su13063123
+# Valentine, K.A., 1947. Distance from Water as a Factor in Grazing Capacity of Rangeland. JOURNAL OF FORESTRY 6.
+# Vallentine, J.F., 2016. Grazing Management. Academic Press.
+
+PUF <- rtruncnorm(n, 
+                  a = min(vals_min), # 0.12
+                  b = max(vals_max), # 0.80
+                  mean = mean(vals_average), # 0.40
+                  sd = vals_sd)
+
+hist(PUF)
+
+```
+
+We can't run the simulation all at once because each piece would add up quickly to overwhelm the RAM. So we split the dataset into chunks of 10,000 rows and this is stored in a list. That's why we have the ```chunk_sim()``` function, so apply the year loop to each chunk in the list.
+
+```{r split df into chunks}
+
+f <- rep(seq_len(ceiling(nrow(df)/10000)), each = 10000, length.out = nrow(df)) # creates splitting index
+df_list <- split(df, f = f) # splits data into managable chuncks and stores in a list
+
+rm(df)
+
+```
+
+
+## Run the simulation!
+
+```{r RUN THE SIM}
+
+tic()
+results_list <- lapply(df_list, chunk_sim, n, c, carbcf_dist, PUF)
+toc()
+#beepr::beep(8)
+
+out <- do.call(rbind, results_list) # 93min for n = 50
+
+r_out <- out %>% 
+  rast(., type = "xyz", crs = "EPSG:4326")
+r_out
+plot(r_out$agb_med_2001)
+
+
+writeRaster(r_out, filename = 
+              here("Data", "AGB", "5arcmin","Simulated", 
+                   "simulation_results_where_igbp6to10or16gl_every_year_2001_2020_5arcmin_AGBunit_kg_ha_n1000.tif"),
+            overwrite = T)
+# out[cold_areas, 3:ncol(out)] <- NA # only run for full dataset
+# write.csv(out, "/Volumes/elephant/wrg/carry_cap/johannes_data/output/sim_results_global_n100_170921.cv") # change name
+
+cat("\n\n Summary of AGB Median 2001: \n"); summary(out$agb_med_2001)
+cat("\n\n Summary of AGB Median 2010: \n"); summary(out$agb_med_2010)
+cat("\n\n Summary of AGB Median 2020: \n"); summary(out$agb_med_2020)
+# cat("\n\n Summary of CC Median 2010: \n"); summary(out$cc_med_2010)
+# cat("\n\n Summary of RSD Median 2010: \n"); summary(out$rsd_med_2010)
+
+
+pal_agb <- scico(n = 6, palette = "bamako", direction = -1)
+
+create_index_map(r_index = r_out$agb_med_2019,
+                     tocrs = "ESRI:54030",
+                     index_main_title = "AGB test",
+                     index_label = "AGB kg/ha/yr",
+                     colorpal = pal_agb,
+                     breakvals =  c(-Inf,250,500,1000,1500,2000, Inf), 
+                     breaknames = c( "< 250", "250-500","500-1000",
+                                     "1000-1500", "1500-2000", "> 2000")) 
+
+
+
+
+create_index_map(r_index = r_out$agb_cv_2010 *100,
+                     tocrs = "ESRI:54030",
+                     index_main_title = "CV %",
+                     index_label = "",
+                     colorpal = pal_cv,
+                     breakvals =  c(0,10,20,40,60,80, Inf),
+                     breaknames = c("0-10", "10-20","20-40","40-60","60-80", "80-100")) 
+```
+
+# Test results
+
+```{r test med and cv}
+
+# just change the input to this this function to get for sense then run the chunk.
+test <- as.matrix(out)
+
+epsg4326 <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+pal_cv <-  scico::scico(n = 6, palette = "nuuk", direction = -1)
+
+
+r_list <- list()
+nms <- colnames(test)[3:length(colnames(test))]
+
+for (i in 1:(length(colnames(test))-2)) {
+  m <- test[, c(1, 2, i+2)]
+  r_list[[i]] <- raster::rasterFromXYZ(m, crs = epsg4326)
+  cat(".")
+}
+
+names(r_list) <- nms
+
+# change pattern argument in grepl() for different plots
+for (name in names(r_list)) {
+  if (grepl("med", name) == T) {
+    raster::plot(r_list[[name]], main = name)
+  }
+  
+}
+
+```
+

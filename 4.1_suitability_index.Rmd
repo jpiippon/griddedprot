@@ -1,0 +1,47 @@
+---
+title: "Process suitabilities"
+author: "JP"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Zabel et al suitabilities
+
+Florian said: 
+"Our SI data is available for the 30-year average periods from 1980-2009 and 2010-2039. You could use the latter for RCP 2.6 or RCP 8.5 (maybe RCP 8.5 is closer to reality), which is centered around the year 2025."
+
+
+
+```{r}
+# get data --> rainfed!
+SI_30arcsec <-
+  here("Data", "Zabel Suitability 2022", "2010-2039_rcp8p5_r", 
+       "overall_suitability_subset_1to17", "overall_suitability_subset_1to17.bil") |> 
+  rast()
+names(SI_30arcsec)
+plot(SI_30arcsec)
+
+# write in raster format (easier to work with )
+writeRaster(SI_30arcsec, 
+            filename = here("Data", "Zabel Suitability 2022","output",
+                   "SI_30arcsec_overall_suitability_subset1to17_2010-2039_rcp8p5_rainfed.tif"),
+            overwrite = T)
+
+
+
+
+
+# Aggregate and resample the SI data to 5 arcmin resolution
+SI_5arcmin <- aggregate(SI_30arcsec, fact = 10, na.rm = T) %>% 
+  resample(., template_rast_5arcmin)
+names(SI_5arcmin) <- "overall_suitability_subset1to17"
+plot(SI_5arcmin)
+
+
+writeRaster(SI_5arcmin, 
+            filename = here("Data", "Zabel Suitability 2022","output",
+                   "SI_5arcmin_overall_suitability_subset1to17_2010-2039_rcp8p5_rainfed.tif"),
+            overwrite = T)
+
+```
+
